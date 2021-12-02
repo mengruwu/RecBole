@@ -1,4 +1,5 @@
 from recbole.model.sequential_recommender.bert4rec import BERT4Rec
+from recbole.model.sequential_recommender.cl4rec import CL4Rec
 from recbole.model.sequential_recommender.caser import Caser
 from recbole.model.sequential_recommender.din import DIN
 from recbole.model.sequential_recommender.dien import DIEN

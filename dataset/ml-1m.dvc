@@ -1,0 +1,5 @@
+outs:
+- md5: 02891e62b78e4087ec66c3bbf2e38829.dir
+  size: 21861648
+  nfiles: 4
+  path: ml-1m

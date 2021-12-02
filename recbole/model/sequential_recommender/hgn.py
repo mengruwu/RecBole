@@ -174,7 +174,7 @@ class HGN(SequentialRecommender):
         pos_items_emb = self.item_embedding_for_prediction(pos_items)
         if self.loss_type == 'BPR':
             neg_items = interaction[self.NEG_ITEM_ID]
-            neg_items_emb = self.item_embedding(neg_items)
+            neg_items_emb = self.item_embedding_for_prediction(neg_items)
             pos_score = torch.sum(seq_output * pos_items_emb, dim=-1)
             neg_score = torch.sum(seq_output * neg_items_emb, dim=-1)
             loss = self.loss_fct(pos_score, neg_score)

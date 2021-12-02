@@ -23,6 +23,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from recbole.utils.enum_type import ModelType
+import wandb
 
 
 def get_local_time():
@@ -191,6 +192,12 @@ def init_seed(seed, reproducibility):
     else:
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
+
+
+def init_wandb(project, entity, config):
+    wandb.init(project=project,
+               entity=entity,
+               config=config)
 
 
 def get_tensorboard(logger):

@@ -8,6 +8,7 @@
 # @Author : Zihan Lin, Yupeng Hou
 # @Email  : linzihan.super@foxmail.com, houyupeng@ruc.edu.cn
 
+import os
 import argparse
 
 from recbole.trainer import HyperTuning
@@ -21,11 +22,12 @@ def main():
     args, _ = parser.parse_known_args()
 
     # plz set algo='exhaustive' to use exhaustive search, in this case, max_evals is auto set
-    config_file_list = args.config_files.strip().split(' ') if args.config_files else None
+    config_file_list = args.config_files.strip().split(' ') if args.config_files else []
+    config_file_list.append(os.path.join('config', 'Default.yaml'))
     hp = HyperTuning(objective_function, algo='exhaustive',
                      params_file=args.params_file, fixed_config_file_list=config_file_list)
     hp.run()
-    hp.export_result(output_file='hyper_example.result')
+    hp.export_result(output_file=os.path.splitext(args.params_file)[0] + '.result')
     print('best params: ', hp.best_params)
     print('best result: ')
     print(hp.params2result[hp.params2str(hp.best_params)])

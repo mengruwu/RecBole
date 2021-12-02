@@ -26,6 +26,7 @@ import torch
 import torch.optim as optim
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from tqdm import tqdm
+import wandb
 
 from recbole.data.interaction import Interaction
 from recbole.data.dataloader import FullSortEvalDataLoader
@@ -91,7 +92,7 @@ class Trainer(AbstractTrainer):
         self.device = config['device']
         self.checkpoint_dir = config['checkpoint_dir']
         ensure_dir(self.checkpoint_dir)
-        saved_model_file = '{}-{}.pth'.format(self.config['model'], get_local_time())
+        saved_model_file = '{}-{}-{}.pth'.format(self.config['model'], self.config['dataset'], get_local_time())
         self.saved_model_file = os.path.join(self.checkpoint_dir, saved_model_file)
         self.weight_decay = config['weight_decay']
 
@@ -266,6 +267,12 @@ class Trainer(AbstractTrainer):
         else:
             self.tensorboard.add_scalar(tag, losses, epoch_idx)
 
+    def _add_train_loss_to_wandb(self, epoch_idx, losses, tag='train/loss'):
+        if isinstance(losses, tuple):
+            wandb.log({f'{tag}{idx}': loss for idx, loss in enumerate(losses)}, step=epoch_idx)
+        else:
+            wandb.log({tag: losses}, step=epoch_idx)
+
     def _add_hparam_to_tensorboard(self, best_valid_result):
         # base hparam
         hparam_dict = {
@@ -310,6 +317,7 @@ class Trainer(AbstractTrainer):
 
         self.eval_collector.data_collect(train_data)
 
+        wandb.watch(self.model, log_freq=1)
         for epoch_idx in range(self.start_epoch, self.epochs):
             # train
             training_start_time = time()
@@ -321,6 +329,8 @@ class Trainer(AbstractTrainer):
             if verbose:
                 self.logger.info(train_loss_output)
             self._add_train_loss_to_tensorboard(epoch_idx, train_loss)
+            self._add_train_loss_to_wandb(epoch_idx, train_loss)
+            wandb.log({'time/train': training_end_time - training_start_time}, step=epoch_idx)
 
             # eval
             if self.eval_step <= 0 or not valid_data:
@@ -349,6 +359,9 @@ class Trainer(AbstractTrainer):
                     self.logger.info(valid_score_output)
                     self.logger.info(valid_result_output)
                 self.tensorboard.add_scalar('Vaild_score', valid_score, epoch_idx)
+                wandb.log({f'val/{k}': v for k, v in valid_result.items()}, step=epoch_idx)
+                wandb.log({f'val/best_score': self.best_valid_score,
+                           f'time/val': valid_end_time - valid_start_time}, step=epoch_idx)
 
                 if update_flag:
                     if saved:
@@ -456,11 +469,14 @@ class Trainer(AbstractTrainer):
                 desc=set_color(f"Evaluate   ", 'pink'),
             ) if show_progress else eval_data
         )
+        test_start_time = time()
         for batch_idx, batched_data in enumerate(iter_data):
             interaction, scores, positive_u, positive_i = eval_func(batched_data)
             if self.gpu_available and show_progress:
                 iter_data.set_postfix_str(set_color('GPU RAM: ' + get_gpu_usage(self.device), 'yellow'))
             self.eval_collector.eval_batch_collect(scores, interaction, positive_u, positive_i)
+        test_end_time = time()
+        wandb.run.summary['time/test'] = test_end_time - test_start_time
         self.eval_collector.model_collect(self.model)
         struct = self.eval_collector.get_data_struct()
         result = self.evaluator.evaluate(struct)

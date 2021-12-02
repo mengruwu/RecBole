@@ -1,0 +1,3 @@
+cl_lambda choice [0.05, 0.1]
+MAX_ITEM_LIST_LENGTH choice [20, 50]
+aug_type1 choice ['random', 'crop', 'mask', 'reorder']

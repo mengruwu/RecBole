@@ -144,6 +144,7 @@ def get_dataloader(config, phase):
         'ENMF': _get_AE_dataloader,
         'RaCT': _get_AE_dataloader,
         'RecVAE': _get_AE_dataloader,
+        'CL4Rec': _get_CL_dataloader,
     }
 
     if config['model'] in register_table:
@@ -162,6 +163,24 @@ def get_dataloader(config, phase):
         elif eval_strategy == 'full':
             return FullSortEvalDataLoader
 
+def _get_CL_dataloader(config, phase):
+    """Customized function for Contrastive Learning models to get correct dataloader class.
+
+    Args:
+        config (Config): An instance object of Config, used to record parameter information.
+        phase (str): The stage of dataloader. It can only take two values: 'train' or 'evaluation'.
+
+    Returns:
+        type: The dataloader class that meets the requirements in :attr:`config` and :attr:`phase`.
+    """
+    if phase == 'train':
+        return CLTrainDataLoader
+    else:
+        eval_strategy = config['eval_neg_sample_args']['strategy']
+        if eval_strategy in {'none', 'by'}:
+            return NegSampleEvalDataLoader
+        elif eval_strategy == 'full':
+            return FullSortEvalDataLoader
 
 def _get_AE_dataloader(config, phase):
     """Customized function for VAE models to get correct dataloader class.

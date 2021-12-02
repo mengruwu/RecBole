@@ -1,0 +1,5 @@
+outs:
+- md5: 82b8404f84a003170973a3eaac222fdf.dir
+  size: 144521320
+  nfiles: 2
+  path: amazon_toy
