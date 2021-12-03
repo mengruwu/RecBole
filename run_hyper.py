@@ -8,6 +8,7 @@
 # @Author : Zihan Lin, Yupeng Hou
 # @Email  : linzihan.super@foxmail.com, houyupeng@ruc.edu.cn
 
+import sys
 import os
 import argparse
 
@@ -20,14 +21,25 @@ def main():
     parser.add_argument('--config_files', type=str, default=None, help='fixed config files')
     parser.add_argument('--params_file', type=str, default=None, help='parameters file')
     args, _ = parser.parse_known_args()
-
+    
+    try:
+        model = [arg.split('=')[1] for arg in sys.argv if '--model=' in arg][0]
+        dataset = [arg.split('=')[1] for arg in sys.argv if '--dataset=' in arg][0]
+    except:
+        raise NotImplementedError('Make sure model and dataset follow the format(--{k}={v}) in command line.')
+    
     # plz set algo='exhaustive' to use exhaustive search, in this case, max_evals is auto set
-    config_file_list = args.config_files.strip().split(' ') if args.config_files else []
+    config_file_list = args.config_files.strip().split(' ') if args.config_files \
+                            else [os.path.join('config', 'model', f'{model}.yaml')]
     config_file_list.append(os.path.join('config', 'Default.yaml'))
+
+    params_file = args.params_file if args.params_file \
+                        else os.path.join('config', 'hyper', f'{model}.hyper')
+    export_result_file = os.path.join('saved', f'{model}-{dataset}.hyper.result')
     hp = HyperTuning(objective_function, algo='exhaustive',
-                     params_file=args.params_file, fixed_config_file_list=config_file_list)
+                     params_file=params_file, fixed_config_file_list=config_file_list)
     hp.run()
-    hp.export_result(output_file=os.path.splitext(args.params_file)[0] + '.result')
+    hp.export_result(export_result_file)
     print('best params: ', hp.best_params)
     print('best result: ')
     print(hp.params2result[hp.params2str(hp.best_params)])

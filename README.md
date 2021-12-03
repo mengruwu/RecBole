@@ -1,6 +1,44 @@
 ![RecBole Logo](asset/logo.png)
 
 --------------------------------------------------------------------------------
+### Create and activate an environment
+```bash
+conda env create -f environment.yml
+conda activate recbole
+```
+### Pull dataset
+```bash
+# Use Amazon Sport as example
+dvc pull dataset/amazon_sport.dvc
+# Format
+dvc pull dataset/{dataset}.dvc
+```
+### Train
+1. Config file is stored at `config/model/{model}.yaml`.
+1. Please follow https://docs.wandb.ai/quickstart to setup wandb before training, and modify wandb related arguments in `config/Default.yaml`, including `wandb_project` and `wandb_entity`.
+```bash
+# Use model "Caser" and dataset "lastfm" as example
+python run.py -m Caser -d lastfm
+# Format
+python run.py -m {model} -d {dataset}
+```
+### Hyperparameter Tuning
+1. Fine-tuning config file is stored at `config/hyper/{dataset}.hyper`.
+2. Please follow [link](https://recbole.io/docs/user_guide/usage/parameter_tuning.html) to setup and modify config file
+```bash
+# Use model "Caser" and dataset "lastfm" as example
+python run_hyper.py \
+--model="Caser" \
+--dataset="lastfm" \
+--gpu_id=0
+# Format
+python run_hyper.py \
+--model="{model}" \
+--dataset="{dataset}" \
+--gpu_id={gpu_id}
+```
+
+--------------------------------------------------------------------------------
 
 # RecBole (伯乐)
 
