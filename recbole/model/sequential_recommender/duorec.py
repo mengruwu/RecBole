@@ -22,7 +22,7 @@ from torch import nn
 from recbole.model.sequential_recommender.sasrec import SASRec
 
 
-class CL4Rec(SASRec):
+class DuoRec(SASRec):
     r"""
     SASRec is the first sequential recommender based on self-attentive mechanism.
 
@@ -33,17 +33,17 @@ class CL4Rec(SASRec):
     """
 
     def __init__(self, config, dataset):
-        super(CL4Rec, self).__init__(config, dataset)
+        super(DuoRec, self).__init__(config, dataset)
 
         # load parameters info
         self.batch_size = config['train_batch_size']
-        self.tau = config['tau']
-        self.cl_lambda = config['cl_lambda']
-        self.cl_loss_type = config['cl_loss_type']
         self.similarity_type = config['similarity_type']
+        self.tau = config['tau']
+        self.cl_loss_type = config['cl_loss_type']
+        self.cl_lambda = config['cl_lambda']
+        self.cl_type = config['cl_type']
 
         # define layers and loss
-        self.item_embedding = nn.Embedding(self.n_items + 1, self.hidden_size, padding_idx=0)  # for mask
         self.default_mask = self.mask_correlated_samples(self.batch_size)
 
         if self.similarity_type == 'dot':
@@ -53,6 +53,8 @@ class CL4Rec(SASRec):
 
         if self.cl_loss_type == 'infonce':
             self.cl_loss_fct = nn.CrossEntropyLoss()
+        elif self.cl_loss_type == 'dcl':
+            self.cl_loss_fct = self.calculate_decoupled_cl_loss
         
         # parameters initialization
         self.apply(self._init_weights)
@@ -66,23 +68,46 @@ class CL4Rec(SASRec):
         return mask
 
     def calculate_loss(self, interaction):
-        loss = super().calculate_loss(interaction)
-        cl_loss = self.calculate_cl_loss(interaction)
-        return loss, self.cl_lambda * cl_loss
-   
-    def calculate_cl_loss(self, interaction):
-        aug_item_seq1, aug_len1, aug_item_seq2, aug_len2 = \
-            interaction['aug1'], interaction['aug_len1'], interaction['aug2'], interaction['aug_len2']
-        seq_output1 = self.forward(aug_item_seq1, aug_len1)
-        seq_output2 = self.forward(aug_item_seq2, aug_len2)
+        item_seq = interaction[self.ITEM_SEQ]
+        item_seq_len = interaction[self.ITEM_SEQ_LEN]
+        seq_output = self.forward(item_seq, item_seq_len)
+        pos_items = interaction[self.POS_ITEM_ID]
+        if self.loss_type == 'BPR':
+            neg_items = interaction[self.NEG_ITEM_ID]
+            pos_items_emb = self.item_embedding(pos_items)
+            neg_items_emb = self.item_embedding(neg_items)
+            pos_score = torch.sum(seq_output * pos_items_emb, dim=-1)  # [B]
+            neg_score = torch.sum(seq_output * neg_items_emb, dim=-1)  # [B]
+            loss = self.loss_fct(pos_score, neg_score)
+        else:  # self.loss_type = 'CE'
+            test_item_emb = self.item_embedding.weight
+            logits = torch.matmul(seq_output, test_item_emb.transpose(0, 1))
+            loss = self.loss_fct(logits, pos_items)
+        
+        losses = [loss]
+        if self.cl_type in ['us', 'un', 'us_x']:
+            un_aug_seq_output = self.forward(item_seq, item_seq_len)
+        
+        if self.cl_type in ['us', 'su', 'us_x']:
+            aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
+            su_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
 
-        logits, labels = self.info_nce(seq_output1, seq_output2)
+        if self.cl_type in ['us', 'un']:
+            logits, labels = self.info_nce(seq_output, un_aug_seq_output)
+            cl_loss = self.cl_lambda * self.cl_loss_fct(logits, labels)
+            losses.append(cl_loss)
 
-        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
-            cl_loss = self.calculate_decoupled_cl_loss(logits, labels)
-        else: # original infonce
-            cl_loss = self.cl_loss_fct(logits, labels)
-        return cl_loss
+        if self.cl_type in ['us', 'su']:
+            logits, labels = self.info_nce(seq_output, su_aug_seq_output)
+            cl_loss = self.cl_lambda * self.cl_loss_fct(logits, labels)
+            losses.append(cl_loss)
+
+        if self.cl_type == 'us_x':
+            logits, labels = self.info_nce(un_aug_seq_output, su_aug_seq_output)
+            cl_loss = self.cl_lambda * self.cl_loss_fct(logits, labels)
+            losses.append(cl_loss)
+
+        return tuple(losses)
     
     def calculate_decoupled_cl_loss(self, input, target):
         input_pos = torch.gather(input, 1, target.unsqueeze(-1)).squeeze(-1)
@@ -100,7 +125,7 @@ class CL4Rec(SASRec):
         cur_batch_size = z_i.size(0)
         N = 2 * cur_batch_size
         if cur_batch_size != self.batch_size:
-            mask = self.mask_correlated_samples(cur_batch_size)
+            mask = self.mask_correlated_samples(cur_batch_size).to(z_i.device)
         else:
             mask = self.default_mask
         z = torch.cat((z_i, z_j), dim=0)  # [2B H]
@@ -120,11 +145,3 @@ class CL4Rec(SASRec):
         # the first column stores positive pair scores
         labels = torch.zeros(N, dtype=torch.long, device=z_i.device)
         return logits, labels
-
-    def full_sort_predict(self, interaction):
-        item_seq = interaction[self.ITEM_SEQ]
-        item_seq_len = interaction[self.ITEM_SEQ_LEN]
-        seq_output = self.forward(item_seq, item_seq_len)
-        test_items_emb = self.item_embedding.weight[:self.n_items]
-        scores = torch.matmul(seq_output, test_items_emb.transpose(0, 1))  # [B n_items]
-        return scores

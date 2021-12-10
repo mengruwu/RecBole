@@ -13,19 +13,19 @@ layer_norm_eps: 1.e-12
 initializer_range: 0.02
 loss_type: CE  # ['CE', 'BPR']
 
-similarity_type: cos
-cl_loss_type: dcl  # ['dcl', 'infonce']
+similarity_type: dot  # ['dot', 'cos']
+tau: 1
+cl_loss_type: infonce  # ['dcl', 'infonce']
 cl_lambda: 0.1
-aug_type1: random  # ['random', 'crop', 'mask', 'reorder']
-aug_type2: null
-tau: 0.5  # softmax
-eta: 0.2   # crop
-gamma: 0.3   # mask
-beta: 0.2   # reorder
+cl_type: us_x  # ['us_x', 'un', 'su', 'us', null]
+# us_x = agree unsupervised aug with supervised aug
+# un = unsupervised aug only
+# su = supervised aug only
+# us = unsupervised aug only + supervised aug only
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 20
 
 # Training Settings
-train_batch_size: 256
+train_batch_size: 512
 neg_sampling: null

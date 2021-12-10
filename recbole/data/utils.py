@@ -145,8 +145,8 @@ def get_dataloader(config, phase):
         'RaCT': _get_AE_dataloader,
         'RecVAE': _get_AE_dataloader,
         'CL4Rec': _get_CL_dataloader,
+        'DuoRec': _get_CL_dataloader,
     }
-
     if config['model'] in register_table:
         return register_table[config['model']](config, phase)
 
