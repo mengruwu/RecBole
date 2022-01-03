@@ -145,6 +145,7 @@ def get_dataloader(config, phase):
         'RaCT': _get_AE_dataloader,
         'RecVAE': _get_AE_dataloader,
         'CL4Rec': _get_CL_dataloader,
+        'CoSeRec': _get_CL_dataloader,
         'DuoRec': _get_CL_dataloader,
     }
     if config['model'] in register_table:
@@ -174,6 +175,16 @@ def _get_CL_dataloader(config, phase):
         type: The dataloader class that meets the requirements in :attr:`config` and :attr:`phase`.
     """
     if phase == 'train':
+        if config['model'] == 'CL4Rec':
+            return CL4RecTrainDataLoader
+        elif config['model'] == 'CoSeRec':
+            return CoSeRecTrainDataLoader
+        elif config['model'] == 'DuoRec':
+            return DuoRecTrainDataLoader
+        elif config['model'] == 'MyRec':
+            return MyRecTrainDataLoader
+        elif config['model'] == 'MyRec2':
+            return MyRec2TrainDataLoader
         return CLTrainDataLoader
     else:
         eval_strategy = config['eval_neg_sample_args']['strategy']

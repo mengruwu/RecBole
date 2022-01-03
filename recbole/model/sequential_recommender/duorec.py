@@ -39,6 +39,7 @@ class DuoRec(SASRec):
         self.batch_size = config['train_batch_size']
         self.similarity_type = config['similarity_type']
         self.tau = config['tau']
+        self.sigma = config['sigma']
         self.cl_loss_type = config['cl_loss_type']
         self.cl_lambda = config['cl_lambda']
         self.cl_type = config['cl_type']
@@ -111,11 +112,18 @@ class DuoRec(SASRec):
     
     def calculate_decoupled_cl_loss(self, input, target):
         input_pos = torch.gather(input, 1, target.unsqueeze(-1)).squeeze(-1)
-        input_exp = torch.exp(input)
-        input_pos_exp = torch.exp(input_pos)
-        input_neg_exp_sum = torch.sum(input_exp, dim=1) - input_pos_exp
-        dcl_loss = torch.mean(-input_pos + torch.log(input_neg_exp_sum))
+        if self.sigma:
+            weight = self.von_mises_fisher_weight(input_pos)
+            input_pos = weight * input_pos
+
+        input_neg = torch.log(torch.sum(input.exp(), dim=1) - input_pos.exp())
+        dcl_loss = torch.mean(-input_pos + input_neg)
         return dcl_loss
+    
+    def von_mises_fisher_weight(self, input):
+        input = torch.exp(input * self.tau / self.sigma)
+        weight = 2 - input / torch.mean(input)
+        return weight
 
     def info_nce(self, z_i, z_j):
         """
