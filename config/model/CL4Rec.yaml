@@ -13,12 +13,12 @@ layer_norm_eps: 1.e-12
 initializer_range: 0.02
 loss_type: CE  # ['CE', 'BPR']
 
-similarity_type: cos
-cl_loss_type: dcl  # ['dcl', 'infonce']
+similarity_type: dot
+cl_loss_type: infonce  # ['dcl', 'infonce']
 cl_lambda: 0.1
 aug_type1: random  # ['random', 'crop', 'mask', 'reorder']
 aug_type2: null
-tau: 0.5  # softmax
+tau: 1  # softmax
 eta: 0.2   # crop
 gamma: 0.3   # mask
 beta: 0.2   # reorder

@@ -4,34 +4,34 @@
 # @Email   : hui.wang@ruc.edu.cn
 
 """
-DuoRec
+MyRec3
 ################################################
 
-Reference:
-    Ruihong Qiu et al. "Contrastive Learning for Representation Degeneration Problem in Sequential Recommendation" in WSDM 2022.
+Reference: None
 
-Reference:
-    https://github.com/RuihongQiu/DuoRec
-
+Reference: None
 """
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from recbole.model.sequential_recommender.cl4rec import CL4Rec
+from recbole.model.sequential_recommender.duorec import DuoRec
 
 
-class DuoRec(CL4Rec):
+class MyRec3(DuoRec):
     r"""
     TODO
     """
 
     def __init__(self, config, dataset):
-        super(DuoRec, self).__init__(config, dataset)
+        super(MyRec3, self).__init__(config, dataset)
 
-        # load parameters info
-        self.cl_type = config['cl_type']
+        # define layers and loss
+        self.item_embedding = nn.Embedding(self.n_items + 1, self.hidden_size, padding_idx=0)  # for mask
+        
+        # parameters initialization
+        self.apply(self._init_weights)
 
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
@@ -52,11 +52,12 @@ class DuoRec(CL4Rec):
         
         losses = [loss]
         if self.cl_type in ['us', 'un', 'us_x']:
-            un_aug_seq_output = self.forward(item_seq, item_seq_len)
+            aug_item_seq2, aug_item_seq_len2 = interaction['aug2'], interaction['aug_len2']
+            un_aug_seq_output = self.forward(aug_item_seq2, aug_item_seq_len2)
         
         if self.cl_type in ['us', 'su', 'us_x']:
-            aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
-            su_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
+            aug_item_seq1, aug_item_seq_len1 = interaction['aug1'], interaction['aug_len1']
+            su_aug_seq_output = self.forward(aug_item_seq1, aug_item_seq_len1)
 
         if self.cl_type in ['us', 'un']:
             logits, labels = self.info_nce(seq_output, un_aug_seq_output)

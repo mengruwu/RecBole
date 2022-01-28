@@ -11,12 +11,10 @@ import numpy as np
 import torch
 import random
 
-from numpy import linalg as LA
 from scipy.sparse import coo_matrix
 from sklearn.preprocessing import normalize
 from scipy.special import softmax
-from itertools import combinations, permutations
-from logging import getLogger
+from itertools import combinations
 
 from recbole.data.dataloader.general_dataloader import TrainDataLoader
 from recbole.data.interaction import Interaction
@@ -67,16 +65,16 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
         self.beta = config['beta']  # for reorder
     
     def _contrastive_learning_augmentation(self, cur_data):
-        aug_seq1, aug_len1 = self._augmentation(cur_data, self.aug_type1)
-        aug_seq2, aug_len2 = self._augmentation(cur_data, self.aug_type2)
+        sequences = cur_data[self.iid_list_field]
+        lengths = cur_data[self.item_list_length_field]
+        aug_seq1, aug_len1 = self._augmentation(sequences, lengths, self.aug_type1)
+        aug_seq2, aug_len2 = self._augmentation(sequences, lengths, self.aug_type2)
         cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
                                      'aug2': aug_seq2, 'aug_len2': aug_len2}))
         return cur_data
 
-    def _augmentation(self, cur_data, aug_type='random'):
+    def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
         aug_idx = self.augmentation_table[aug_type]
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
         aug_sequences = torch.zeros_like(sequences)
         aug_lengths = torch.zeros_like(lengths)
 
@@ -110,20 +108,19 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
         return aug_sequences, aug_lengths
 
 
-class CoSeRecTrainDataLoader(CLTrainDataLoader):
+class CoSeRecTrainDataLoader(CL4RecTrainDataLoader):
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
 
+        self.inter_num = len(dataset)
         self.item_num = self.dataset.item_num
         self.max_item_list_len = self.dataset.max_item_list_len
 
-        augmentation_type = ['insert', 'substitute', 'random']
+        augmentation_type = ['insert', 'substitute', 'crop', 'mask', 'reorder', 'random', 'random_all']
         self.augmentation_table = {aug_type: idx for idx, aug_type in enumerate(augmentation_type)}
         self.online_item_cor_mat = None
         self.offline_item_cor_mat = None
 
-        self.aug_type1 = config['aug_type1']
-        self.aug_type2 = config['aug_type2'] if config['aug_type2'] else config['aug_type1']
         self.offline_similarity_type = config['cl_aug_offline_similarity_type']
         self.topk = config['cl_aug_similarity_topk']
         self.insert_rate = config['insert_rate']
@@ -190,17 +187,8 @@ class CoSeRecTrainDataLoader(CLTrainDataLoader):
                                               shape=(self.item_num, self.item_num))
         self._update_most_similar_items()
 
-    def _contrastive_learning_augmentation(self, cur_data):
-        aug_seq1, aug_len1 = self._augmentation(cur_data, self.aug_type1)
-        aug_seq2, aug_len2 = self._augmentation(cur_data, self.aug_type2)
-        cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
-                                     'aug2': aug_seq2, 'aug_len2': aug_len2}))
-        return cur_data
-
-    def _augmentation(self, cur_data, aug_type='random'):
+    def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
         aug_idx = self.augmentation_table[aug_type]
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
         aug_sequences = torch.zeros_like(sequences)
         aug_lengths = torch.zeros_like(lengths)
 
@@ -226,11 +214,37 @@ class CoSeRecTrainDataLoader(CLTrainDataLoader):
             seq[substitute_index] = torch.from_numpy(substitute_items)
             return seq, length
         
-        aug_func = [insert, substitute]
-        for i, (seq, length) in enumerate(zip(sequences, lengths)):
-            if aug_type == 'random':
-                aug_idx = random.randrange(len(aug_func))
-            
+        def crop(seq, length):  # copy from cl4rec
+            new_seq = torch.zeros_like(seq)
+            new_seq_length = max(1, int(length * self.eta))
+            crop_start = random.randint(0, length - new_seq_length)
+            new_seq[:new_seq_length] = seq[crop_start:crop_start + new_seq_length]
+            return new_seq, new_seq_length
+        
+        def mask(seq, length):  # copy from cl4rec
+            num_mask = int(length * self.gamma)
+            mask_index = random.sample(range(length), k=num_mask)
+            seq[mask_index] = self.dataset.item_num  # token 0 has been used for semantic masking
+            return seq, length
+        
+        def reorder(seq, length):  # copy from cl4rec
+            num_reorder = int(length * self.beta)
+            reorder_start = random.randint(0, length - num_reorder)
+            shuffle_index = torch.randperm(num_reorder) + reorder_start
+            seq[reorder_start:reorder_start + num_reorder] = seq[shuffle_index]
+            return seq, length
+        
+        aug_func = [insert, substitute, crop, mask, reorder]
+        if 'random' in aug_type:
+            if aug_type == 'random_all':  # [insert, substitute, crop, mask, reorder]
+                aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
+            elif aug_type == 'random':  # [insert, substitute]
+                aug_idxs = random.choices(range(2), k=self.inter_num)
+        else:
+            aug_idx = self.augmentation_table[aug_type]
+            aug_idxs = [aug_idx] * self.inter_num
+        
+        for i, (aug_idx, seq, length) in enumerate(zip(aug_idxs, sequences, lengths)):
             aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.clone(), length)
 
         return aug_sequences, aug_lengths
@@ -271,6 +285,46 @@ class DuoRecTrainDataLoader(CLTrainDataLoader):
         return aug_sequences, aug_lengths
 
 
+class MyRec3TrainDataLoader(DuoRecTrainDataLoader):
+
+    def __init__(self, config, dataset, sampler, shuffle=False):
+        super().__init__(config, dataset, sampler, shuffle=shuffle)
+
+        self.ucl_type = config['ucl_type']
+        ucl_dataloader_table = {
+            'cl4rec': CL4RecTrainDataLoader,
+            'coserec': CoSeRecTrainDataLoader,
+            'myrec': MyRec2TrainDataLoader,
+        }
+        ucl_aug_type_table = {
+            'cl4rec': 'random',
+            'coserec': 'random_all',
+            'myrec': 'random_all',
+        }
+        self.ucl_dataloader = ucl_dataloader_table[self.ucl_type](config, dataset, sampler, shuffle)
+        self._ucl_aug_type = ucl_aug_type_table[self.ucl_type]
+
+    def _contrastive_learning_augmentation(self, cur_data):
+        sequences = cur_data[self.iid_list_field]
+        lengths = cur_data[self.item_list_length_field]
+        targets = cur_data[self.iid_field]
+        aug_seq1, aug_len1 = self._supervised_augmentation(cur_data)
+        aug_seq1, aug_len1 = self._unsupervised_augmentation(aug_seq1, aug_len1, targets)
+        aug_seq2, aug_len2 = self._unsupervised_augmentation(sequences, lengths, targets)
+        cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
+                                     'aug2': aug_seq2, 'aug_len2': aug_len2}))
+        return cur_data
+
+    def _supervised_augmentation(self, cur_data):
+        return super()._augmentation(cur_data)
+    
+    def _unsupervised_augmentation(self, sequences, lengths, targets=None):
+        return self.ucl_dataloader._augmentation(sequences,
+                                                 lengths,
+                                                 targets=targets,
+                                                 aug_type=self._ucl_aug_type)
+
+
 class MyRecTrainDataLoader(CLTrainDataLoader):
 
     def __init__(self, config, dataset, sampler, shuffle=False):
@@ -293,7 +347,6 @@ class MyRecTrainDataLoader(CLTrainDataLoader):
         self._init_augmentation()
 
     def _init_augmentation(self):
-
         uids = self.dataset.inter_feat[self.uid_field].numpy()
         iids = self.dataset.inter_feat[self.iid_field].numpy()
 
@@ -336,16 +389,16 @@ class MyRecTrainDataLoader(CLTrainDataLoader):
         self.adj_matrix2 = self.adj_matrix.dot(self.adj_matrix) + self.adj_matrix
 
     def _contrastive_learning_augmentation(self, cur_data):
-        aug_seq1, aug_len1 = self._augmentation(cur_data, self.aug_type1)
-        aug_seq2, aug_len2 = self._augmentation(cur_data, self.aug_type2)
+        sequences = cur_data[self.iid_list_field]
+        lengths = cur_data[self.item_list_length_field]
+        targets = cur_data[self.iid_field]
+        aug_seq1, aug_len1 = self._augmentation(sequences, lengths, targets, self.aug_type1)
+        aug_seq2, aug_len2 = self._augmentation(sequences, lengths, targets, self.aug_type2)
         cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
                                      'aug2': aug_seq2, 'aug_len2': aug_len2}))
         return cur_data
     
-    def _augmentation(self, cur_data, aug_type='random', eps=1e-8):
-        targets = cur_data[self.iid_field]
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
+    def _augmentation(self, sequences, lengths, targets, aug_type='random', eps=1e-8):
         aug_idx = self.augmentation_table[aug_type]
         aug_sequences = torch.zeros_like(sequences)
         aug_lengths = torch.zeros_like(lengths)
@@ -380,7 +433,7 @@ class MyRecTrainDataLoader(CLTrainDataLoader):
             new_length = length - 1
             return new_seq, new_length
         
-        def substitute(seq, length, target, eps=1e-8):
+        def substitute(seq, length, target):
             if length <= 2:
                 return seq, length
             new_seq = seq.clone()
@@ -405,7 +458,7 @@ class MyRecTrainDataLoader(CLTrainDataLoader):
             new_seq[substitute_idx] = select_item
             return new_seq, length
         
-        def insert(seq, length, target, eps=1e-8):
+        def insert(seq, length, target):
             if length == seq.size(0):
                 seq, length = drop(seq, length, target)
 
@@ -470,16 +523,12 @@ class MyRec2TrainDataLoader(MyRecTrainDataLoader):
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
 
-        augmentation_type = ['crop', 'insert', 'reorder', 'random']
+        augmentation_type = ['crop', 'insert', 'reorder', 'drop', 'substitute', 'random']
         self.augmentation_table = {aug_type: idx for idx, aug_type in enumerate(augmentation_type)}
 
-        self.tau = config['aug_tau']
+        self.tau = config['aug_tau'] if config['aug_tau'] else 1
     
-    def _augmentation(self, cur_data, aug_type='random', eps=1e-8):
-        targets = cur_data[self.iid_field]
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
-        aug_idx = self.augmentation_table[aug_type]
+    def _augmentation(self, sequences, lengths, targets, aug_type='random', eps=1e-8):
         aug_sequences = torch.zeros_like(sequences)
         aug_lengths = torch.zeros_like(lengths)
         
@@ -537,7 +586,8 @@ class MyRec2TrainDataLoader(MyRecTrainDataLoader):
             if prob_abc.count_nonzero() == 0:
                 return new_seq, length
 
-            select_item = random.choices(prob_abc.indices, weights=softmax((prob_abc.data) / self.tau))[0]
+            select_p = softmax(prob_abc.data / self.tau)
+            select_item = random.choices(prob_abc.indices, weights=select_p)[0]
 
             if select_item in [self.start_id, self.end_id]:
                 return new_seq, length
@@ -566,8 +616,9 @@ class MyRec2TrainDataLoader(MyRecTrainDataLoader):
             prob_abc = self.adj_matrix[a].multiply(self.adj_matrix.transpose()[c])
             if prob_abc.count_nonzero() == 0:
                 return new_seq, length
-                
-            select_item = random.choices(prob_abc.indices, weights=softmax((prob_abc.data) / self.tau))[0]
+            
+            select_p = softmax(prob_abc.data / self.tau)
+            select_item = random.choices(prob_abc.indices, weights=select_p)[0]
 
             if select_item in [self.start_id, self.end_id]:
                 return new_seq, length
@@ -606,17 +657,21 @@ class MyRec2TrainDataLoader(MyRecTrainDataLoader):
             prob_cd = np.log(prob_cd + eps)
 
             swap_p = (prob_ac + prob_cb + prob_bd) - (prob_ab + prob_bc + prob_cd)
-            swap_p = softmax((swap_p) / self.tau)
+            swap_p = softmax(swap_p / self.tau)
             swap_idx = random.choices(range(length - 1), weights=swap_p)[0]
             
             new_seq[[swap_idx, swap_idx + 1]] = new_seq[[swap_idx + 1, swap_idx]]
             return new_seq, length
         
-        # aug_func = [crop, drop, substitute, insert, reorder]
-        aug_func = [crop, insert, reorder]
-        if aug_type == 'random':
-            aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
+        aug_func = [crop, insert, reorder, drop, substitute]
+        # aug_func = [crop, insert, reorder]
+        if 'random' in aug_type:
+            if aug_type == 'random_all':  # [crop, insert, reorder, drop, substitute]
+                aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
+            elif aug_type == 'random':  # [crop, insert, reorder]
+                aug_idxs = random.choices(range(3), k=self.inter_num)
         else:
+            aug_idx = self.augmentation_table[aug_type]
             aug_idxs = [aug_idx] * self.inter_num
 
         for i, (aug_idx, target, seq, length) in enumerate(zip(aug_idxs, targets, sequences, lengths)):

@@ -1,8 +1,7 @@
 from recbole.trainer import Trainer
 
 class CoSeRecTrainer(Trainer):
-    r"""MKRTrainer is designed for MKR, which is a knowledge-aware recommendation method.
-
+    r"""CoSeRecTrainer is designed for CoSeRec, which is a contrastive learning recommendation method based on SASRec.
     """
     def __init__(self, config, model):
         super(CoSeRecTrainer, self).__init__(config, model)
