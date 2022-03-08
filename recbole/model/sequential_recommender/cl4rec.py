@@ -66,17 +66,41 @@ class CL4Rec(SASRec):
         return mask
 
     def calculate_loss(self, interaction):
-        loss = super().calculate_loss(interaction)
-        cl_loss = self.calculate_cl_loss(interaction)
-        return loss, self.cl_lambda * cl_loss
-   
-    def calculate_cl_loss(self, interaction):
-        aug_item_seq1, aug_len1, aug_item_seq2, aug_len2 = \
-            interaction['aug1'], interaction['aug_len1'], interaction['aug2'], interaction['aug_len2']
-        seq_output1 = self.forward(aug_item_seq1, aug_len1)
-        seq_output2 = self.forward(aug_item_seq2, aug_len2)
+        rs_loss, seq_output = self.calculate_rs_loss(interaction, return_output=True)
+        cl_loss = self.calculate_cl_loss(interaction, seq_output=seq_output)
+        return rs_loss, self.cl_lambda * cl_loss
+    
+    def calculate_rs_loss(self, interaction, return_output=False):
+        item_seq = interaction[self.ITEM_SEQ]
+        item_seq_len = interaction[self.ITEM_SEQ_LEN]
+        seq_output = self.forward(item_seq, item_seq_len)
+        pos_items = interaction[self.POS_ITEM_ID]
+        if self.loss_type == 'BPR':
+            neg_items = interaction[self.NEG_ITEM_ID]
+            pos_items_emb = self.item_embedding(pos_items)
+            neg_items_emb = self.item_embedding(neg_items)
+            pos_score = torch.sum(seq_output * pos_items_emb, dim=-1)  # [B]
+            neg_score = torch.sum(seq_output * neg_items_emb, dim=-1)  # [B]
+            loss = self.loss_fct(pos_score, neg_score)
+        else:  # self.loss_type = 'CE'
+            test_item_emb = self.item_embedding.weight
+            logits = torch.matmul(seq_output, test_item_emb.transpose(0, 1))
+            loss = self.loss_fct(logits, pos_items)
 
-        logits, labels = self.info_nce(seq_output1, seq_output2)
+        if return_output:
+            return loss, seq_output
+        else:
+            return loss
+
+    def calculate_cl_loss(self, interaction, seq_output=None):
+        if 'aug1' in interaction:
+            aug_item_seq1, aug_len1, aug_item_seq2, aug_len2 = \
+                interaction['aug1'], interaction['aug_len1'], interaction['aug2'], interaction['aug_len2']
+            seq_output1 = self.forward(aug_item_seq1, aug_len1)
+            seq_output2 = self.forward(aug_item_seq2, aug_len2)
+            logits, labels = self.info_nce(seq_output1, seq_output2)
+        else:
+            logits, labels = self.info_nce(seq_output, seq_output)
 
         if self.cl_loss_type == 'dcl': # decoupled contrastive learning
             cl_loss = self.calculate_decoupled_cl_loss(logits, labels)

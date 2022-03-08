@@ -42,12 +42,16 @@ class CLTrainDataLoader(TrainDataLoader):
         self.item_list_length_field = dataset.item_list_length_field
 
     def _next_batch_data(self):
-        cur_data = self._contrastive_learning_augmentation(self.dataset[self.pr:self.pr + self.step])
+        cur_data = self.dataset[self.pr:self.pr + self.step]
         self.pr += self.step
         return cur_data
+    
+    def _shuffle(self):
+        super()._shuffle()
+        self.augmentation()
 
-    def _contrastive_learning_augmentation(self):
-        raise NotImplementedError('Method _contrastive_learning_augmentation should be implemented.')
+    def augmentation(self):
+        raise NotImplementedError('Method augmentation should be implemented.')
 
 
 class CL4RecTrainDataLoader(CLTrainDataLoader):
@@ -60,71 +64,82 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
         
         self.aug_type1 = config['aug_type1']
         self.aug_type2 = config['aug_type2'] if config['aug_type2'] else config['aug_type1']
-        self.eta = config['eta']  # for crop
-        self.gamma = config['gamma']  # for mask
-        self.beta = config['beta']  # for reorder
+        self.crop_rate = config['crop_rate']  # for crop
+        self.mask_rate = config['mask_rate']  # for mask
+        self.reorder_rate = config['reorder_rate']  # for reorder
     
-    def _contrastive_learning_augmentation(self, cur_data):
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
-        aug_seq1, aug_len1 = self._augmentation(sequences, lengths, self.aug_type1)
-        aug_seq2, aug_len2 = self._augmentation(sequences, lengths, self.aug_type2)
-        cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
-                                     'aug2': aug_seq2, 'aug_len2': aug_len2}))
-        return cur_data
+    def _crop(self, seq, length):
+        new_seq = np.zeros_like(seq)
+        new_seq_length = max(1, int(length * self.crop_rate))
+        crop_start = random.randint(0, length - new_seq_length)
+        new_seq[:new_seq_length] = seq[crop_start:crop_start + new_seq_length]
+        return new_seq, new_seq_length
+    
+    def _mask(self, seq, length):
+        num_mask = int(length * self.mask_rate)
+        mask_index = random.sample(range(length), k=num_mask)
+        seq[mask_index] = self.dataset.item_num  # token 0 has been used for semantic masking
+        return seq, length
+    
+    def _reorder(self, seq, length):
+        num_reorder = int(length * self.reorder_rate)
+        reorder_start = random.randint(0, length - num_reorder)
+        shuffle_index = np.random.permutation(num_reorder) + reorder_start
+        seq[reorder_start:reorder_start + num_reorder] = seq[shuffle_index]
+        return seq, length
+    
+    def augmentation(self):
+        sequences = self.dataset[self.iid_list_field].numpy()
+        lengths = self.dataset[self.item_list_length_field].numpy()
 
-    def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
-        aug_idx = self.augmentation_table[aug_type]
-        aug_sequences = torch.zeros_like(sequences)
-        aug_lengths = torch.zeros_like(lengths)
+        aug_seq1, aug_len1 = self._augmentation(sequences, lengths, aug_type=self.aug_type1)
+        aug_seq2, aug_len2 = self._augmentation(sequences, lengths, aug_type=self.aug_type2)
+        self.dataset.inter_feat.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
+                                                    'aug2': aug_seq2, 'aug_len2': aug_len2}))
 
-        def crop(seq, length):
-            new_seq = torch.zeros_like(seq)
-            new_seq_length = max(1, int(length * self.eta))
-            crop_start = random.randint(0, length - new_seq_length)
-            new_seq[:new_seq_length] = seq[crop_start:crop_start + new_seq_length]
-            return new_seq, new_seq_length
+    def _shuffle(self):
+        self.dataset.shuffle()
+        if self.aug_type1 != None:
+            self.augmentation()
+
+    def _augmentation(self, sequences, lengths, targets=None, aug_type='random_all'):
+        aug_sequences = np.zeros_like(sequences)
+        aug_lengths = np.zeros_like(lengths)
+        num = aug_sequences.shape[0]
         
-        def mask(seq, length):
-            num_mask = int(length * self.gamma)
-            mask_index = random.sample(range(length), k=num_mask)
-            seq[mask_index] = self.dataset.item_num  # token 0 has been used for semantic masking
-            return seq, length
+        aug_func = [self._crop, self._mask, self._reorder]
+        if aug_type == 'random':  # [crop, mask, reorder]
+            aug_idxs = random.choices(range(len(aug_func)), k=num)
+        else:
+            aug_idx = self.augmentation_table[aug_type]
+            aug_idxs = [aug_idx] * num
         
-        def reorder(seq, length):
-            num_reorder = int(length * self.beta)
-            reorder_start = random.randint(0, length - num_reorder)
-            shuffle_index = torch.randperm(num_reorder) + reorder_start
-            seq[reorder_start:reorder_start + num_reorder] = seq[shuffle_index]
-            return seq, length
-
-        aug_func = [crop, mask, reorder]
-        for i, (seq, length) in enumerate(zip(sequences, lengths)):
-            if aug_type == 'random':
-                aug_idx = random.randrange(len(aug_func))
-            
-            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.clone(), length)
-
+        for i, (aug_idx, seq, length) in enumerate(zip(aug_idxs, sequences, lengths)):
+            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.copy(), length)
+        
         return aug_sequences, aug_lengths
 
 
 class CoSeRecTrainDataLoader(CL4RecTrainDataLoader):
+
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
 
-        self.inter_num = len(dataset)
         self.item_num = self.dataset.item_num
         self.max_item_list_len = self.dataset.max_item_list_len
+        
+        self.reorder_rate = config['reorder_rate']
+        self.insert_rate = config['insert_rate']
+        self.substitute_rate = config['substitute_rate']
 
-        augmentation_type = ['insert', 'substitute', 'crop', 'mask', 'reorder', 'random', 'random_all']
+        augmentation_type = ['insert', 'substitute', 'crop', 'mask', 'reorder']
         self.augmentation_table = {aug_type: idx for idx, aug_type in enumerate(augmentation_type)}
         self.online_item_cor_mat = None
         self.offline_item_cor_mat = None
 
         self.offline_similarity_type = config['cl_aug_offline_similarity_type']
         self.topk = config['cl_aug_similarity_topk']
-        self.insert_rate = config['insert_rate']
-        self.substitute_rate = config['substitute_rate']
+
         self._init_augmentation()
 
     def _init_augmentation(self):
@@ -187,80 +202,59 @@ class CoSeRecTrainDataLoader(CL4RecTrainDataLoader):
                                               shape=(self.item_num, self.item_num))
         self._update_most_similar_items()
 
-    def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
-        aug_idx = self.augmentation_table[aug_type]
-        aug_sequences = torch.zeros_like(sequences)
-        aug_lengths = torch.zeros_like(lengths)
-
-        def insert(seq, length):  # it has duplication in seq
-            new_seq = torch.zeros_like(seq)
-            num_insert = max(int(length * self.insert_rate), 1)
-            insert_index = random.sample(range(length), k=num_insert)
-            ref_items = [seq[i] for i in insert_index]
-            insert_items = self.most_similar_items[ref_items, 0]
-            seq = seq[:length].unsqueeze(1).tolist()
-            for i, item in zip(insert_index, insert_items):
-                seq[i].insert(0, item)
-            seq = np.concatenate(seq, axis=0)[-self.max_item_list_len:]
-            new_seq_length = len(seq)
-            new_seq[:new_seq_length] = torch.from_numpy(seq)
-            return new_seq, new_seq_length
+    def _augmentation(self, sequences, lengths, targets=None, aug_type='random_all'):
+        aug_sequences = np.zeros_like(sequences)
+        aug_lengths = np.zeros_like(lengths)
+        num = aug_sequences.shape[0]
         
-        def substitute(seq, length):
-            num_substitute = max(int(length * self.substitute_rate), 1)
-            substitute_index = random.sample(range(length), k=num_substitute)
-            ref_items = [seq[i] for i in substitute_index]
-            substitute_items = self.most_similar_items[ref_items, 0]
-            seq[substitute_index] = torch.from_numpy(substitute_items)
-            return seq, length
-        
-        def crop(seq, length):  # copy from cl4rec
-            new_seq = torch.zeros_like(seq)
-            new_seq_length = max(1, int(length * self.eta))
-            crop_start = random.randint(0, length - new_seq_length)
-            new_seq[:new_seq_length] = seq[crop_start:crop_start + new_seq_length]
-            return new_seq, new_seq_length
-        
-        def mask(seq, length):  # copy from cl4rec
-            num_mask = int(length * self.gamma)
-            mask_index = random.sample(range(length), k=num_mask)
-            seq[mask_index] = self.dataset.item_num  # token 0 has been used for semantic masking
-            return seq, length
-        
-        def reorder(seq, length):  # copy from cl4rec
-            num_reorder = int(length * self.beta)
-            reorder_start = random.randint(0, length - num_reorder)
-            shuffle_index = torch.randperm(num_reorder) + reorder_start
-            seq[reorder_start:reorder_start + num_reorder] = seq[shuffle_index]
-            return seq, length
-        
-        aug_func = [insert, substitute, crop, mask, reorder]
-        if 'random' in aug_type:
-            if aug_type == 'random_all':  # [insert, substitute, crop, mask, reorder]
-                aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
-            elif aug_type == 'random':  # [insert, substitute]
-                aug_idxs = random.choices(range(2), k=self.inter_num)
+        aug_func = [self._insert, self._substitute, \
+                    self._crop, self._mask, self._reorder]
+        if aug_type == 'random_all':  # [insert, substitute, crop, mask, reorder]
+            aug_idxs = random.choices(range(len(aug_func)), k=num)
+        elif aug_type == 'random':  # [insert, substitute]
+            aug_idxs = random.choices(range(2), k=num)
+        elif aug_type == 'random_cmr':  # CL4SRec [crop, mask, reorder]
+            aug_idxs = random.choices(range(2, 5), k=num)
         else:
             aug_idx = self.augmentation_table[aug_type]
-            aug_idxs = [aug_idx] * self.inter_num
+            aug_idxs = [aug_idx] * num
         
         for i, (aug_idx, seq, length) in enumerate(zip(aug_idxs, sequences, lengths)):
-            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.clone(), length)
-
+            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.copy(), length)
+        
         return aug_sequences, aug_lengths
 
-
+    def _insert(self, seq, length):  # it has duplication in seq
+        new_seq = np.zeros_like(seq)
+        num_insert = max(int(length * self.insert_rate), 1)
+        insert_index = random.sample(range(length), k=num_insert)
+        ref_items = [seq[i] for i in insert_index]
+        insert_items = self.most_similar_items[ref_items, 0]
+        seq = np.expand_dims(seq[:length], axis=1).tolist()
+        for i, item in zip(insert_index, insert_items):
+            seq[i].insert(0, item)
+        seq = np.concatenate(seq, axis=0)[-self.max_item_list_len:]
+        new_seq_length = len(seq)
+        new_seq[:new_seq_length] = seq
+        return new_seq, new_seq_length
+    
+    def _substitute(self, seq, length):
+        num_substitute = max(int(length * self.substitute_rate), 1)
+        substitute_index = random.sample(range(length), k=num_substitute)
+        ref_items = [seq[i] for i in substitute_index]
+        substitute_items = self.most_similar_items[ref_items, 0]
+        seq[substitute_index] = substitute_items
+        return seq, length
+    
 class DuoRecTrainDataLoader(CLTrainDataLoader):
 
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
 
-        self._init_augmentation()
-
-    def _contrastive_learning_augmentation(self, cur_data):
-        aug_seq, aug_len = self._augmentation(cur_data)
-        cur_data.update(Interaction({'aug': aug_seq, 'aug_len': aug_len}))
-        return cur_data
+    def augmentation(self):
+        targets = self.dataset.inter_feat[self.iid_field].numpy()
+        aug_seq, aug_len = self._augmentation(targets=targets)
+        self.dataset.inter_feat.update(Interaction({'aug': aug_seq, 'aug_len': aug_len}))
 
     def _init_augmentation(self):
         target_item_list = self.dataset.inter_feat[self.iid_field].numpy()
@@ -273,11 +267,11 @@ class DuoRecTrainDataLoader(CLTrainDataLoader):
         self.same_target_index = index
 
     def _shuffle(self):
-        super()._shuffle()
+        self.dataset.shuffle()
         self._init_augmentation()
+        self.augmentation()
 
-    def _augmentation(self, cur_data):
-        targets = cur_data[self.iid_field].numpy()
+    def _augmentation(self, sequences=None, lengths=None, targets=None):
         select_index = [np.random.choice(self.same_target_index[target]) for target in targets]
         aug_sequences = self.dataset[self.iid_list_field][select_index]
         aug_lengths = self.dataset[self.item_list_length_field][select_index]
@@ -294,29 +288,26 @@ class MyRec3TrainDataLoader(DuoRecTrainDataLoader):
         ucl_dataloader_table = {
             'cl4rec': CL4RecTrainDataLoader,
             'coserec': CoSeRecTrainDataLoader,
-            'myrec': MyRec2TrainDataLoader,
         }
         ucl_aug_type_table = {
             'cl4rec': 'random',
             'coserec': 'random_all',
-            'myrec': 'random_all',
         }
         self.ucl_dataloader = ucl_dataloader_table[self.ucl_type](config, dataset, sampler, shuffle)
         self._ucl_aug_type = ucl_aug_type_table[self.ucl_type]
-
-    def _contrastive_learning_augmentation(self, cur_data):
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
-        targets = cur_data[self.iid_field]
-        aug_seq1, aug_len1 = self._supervised_augmentation(cur_data)
-        aug_seq1, aug_len1 = self._unsupervised_augmentation(aug_seq1, aug_len1, targets)
+    
+    def augmentation(self):
+        sequences = self.dataset.inter_feat[self.iid_list_field].numpy()
+        lengths = self.dataset.inter_feat[self.item_list_length_field].numpy()
+        targets = self.dataset.inter_feat[self.iid_field].numpy()
+        aug_seq1, aug_len1 = self._supervised_augmentation(targets)
+        aug_seq1, aug_len1 = self._unsupervised_augmentation(aug_seq1.numpy(), aug_len1.numpy(), targets)
         aug_seq2, aug_len2 = self._unsupervised_augmentation(sequences, lengths, targets)
-        cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
-                                     'aug2': aug_seq2, 'aug_len2': aug_len2}))
-        return cur_data
+        self.dataset.inter_feat.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
+                                                    'aug2': aug_seq2, 'aug_len2': aug_len2}))
 
-    def _supervised_augmentation(self, cur_data):
-        return super()._augmentation(cur_data)
+    def _supervised_augmentation(self, targets):
+        return super()._augmentation(targets=targets)
     
     def _unsupervised_augmentation(self, sequences, lengths, targets=None):
         return self.ucl_dataloader._augmentation(sequences,
@@ -324,357 +315,53 @@ class MyRec3TrainDataLoader(DuoRecTrainDataLoader):
                                                  targets=targets,
                                                  aug_type=self._ucl_aug_type)
 
-
-class MyRecTrainDataLoader(CLTrainDataLoader):
-
+class MyRec4TrainDataLoader(DuoRecTrainDataLoader):
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
 
-        self.inter_num = len(dataset)
-
-        augmentation_type = ['crop', 'drop', 'substitute', 'insert', 'reorder', 'random']
-        self.augmentation_table = {aug_type: idx for idx, aug_type in enumerate(augmentation_type)}
+        self.dataset_reverse = self.dataset.copy(self.dataset.inter_feat)
+        self.dataset_reverse.reversed = True
+        self.dataset_reverse.data_augmentation()
         
-        self.start_id = self.dataset.item_num
-        self.end_id = self.dataset.item_num + 1
-        self.entity_num = self.dataset.item_num + 2
-
-        self.aug_type1 = config['aug_type1']
-        self.aug_type2 = config['aug_type2'] if config['aug_type2'] else config['aug_type1']
-
-        self.gamma = config['gamma']
-
-        self._init_augmentation()
-
     def _init_augmentation(self):
-        uids = self.dataset.inter_feat[self.uid_field].numpy()
-        iids = self.dataset.inter_feat[self.iid_field].numpy()
-
-        item_list = self.dataset[self.iid_list_field].numpy()
-        item_length = self.dataset[self.item_list_length_field].numpy()
-        last_item_index = item_length - 1
-        prev_iids = item_list[np.arange(len(self.dataset)), last_item_index]
-        start_iids = []
-        end_iids = []
-
-        last_uid = None
-        for i, (uid, iid, prev_iid) in enumerate(zip(uids, iids, prev_iids)):
-            if last_uid != uid:
-                last_uid = uid
-                start_iids.append(prev_iid)
-                end_iids.append(iid)
-            end_iids[-1] = iid
-
-        assert self.dataset.user_num >= len(start_iids)
-        assert self.dataset.user_num >= len(end_iids)
-
-        total_num = len(iids) + len(start_iids) + len(end_iids)
-        row = np.zeros(total_num)
-        col = np.zeros(total_num)
-        data = np.ones(total_num)
-
-        row[:len(iids)] = prev_iids
-        col[:len(iids)] = iids
-
-        row[len(iids):-len(end_iids)] = np.full(len(start_iids), self.start_id)
-        col[len(iids):-len(end_iids)] = start_iids
-
-        row[-len(end_iids):] = end_iids
-        col[-len(end_iids):] = np.full(len(end_iids), self.end_id)
-
-        self.adj_matrix = coo_matrix((data, (row, col)),
-                                     shape=(self.entity_num, self.entity_num),
-                                     dtype=np.float16).tocsr()
-        self.adj_matrix = normalize(self.adj_matrix, norm='l1', axis=1)
-        self.adj_matrix2 = self.adj_matrix.dot(self.adj_matrix) + self.adj_matrix
-
-    def _contrastive_learning_augmentation(self, cur_data):
-        sequences = cur_data[self.iid_list_field]
-        lengths = cur_data[self.item_list_length_field]
-        targets = cur_data[self.iid_field]
-        aug_seq1, aug_len1 = self._augmentation(sequences, lengths, targets, self.aug_type1)
-        aug_seq2, aug_len2 = self._augmentation(sequences, lengths, targets, self.aug_type2)
-        cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
-                                     'aug2': aug_seq2, 'aug_len2': aug_len2}))
-        return cur_data
+        super()._init_augmentation()
+        target_item_list = self.dataset_reverse.inter_feat[self.iid_field].numpy()
+        index = {}
+        for i, key in enumerate(target_item_list):
+            if key not in index:
+                index[key] = [i]
+            else:
+                index[key].append(i)
+        self.same_target_index_reverse = index
     
-    def _augmentation(self, sequences, lengths, targets, aug_type='random', eps=1e-8):
-        aug_idx = self.augmentation_table[aug_type]
-        aug_sequences = torch.zeros_like(sequences)
-        aug_lengths = torch.zeros_like(lengths)
-        
-        def crop(seq, length, target):
-            if length <= 2:
-                return seq, length
+    def augmentation(self):
+        targets = self.dataset.inter_feat[self.iid_field].numpy()
+        sequences = self.dataset.inter_feat[self.iid_list_field].numpy()
+        lengths = self.dataset.inter_feat[self.item_list_length_field].numpy()
+        aug_seq, aug_len = self._augmentation(targets=targets)
+        aug_seq_rev, aug_len_rev = self._augmentation_reverse(sequences=sequences, lengths=lengths, targets=targets)
+        self.dataset.inter_feat.update(Interaction({'aug': aug_seq, 'aug_len': aug_len,
+                                                    'aug_rev': aug_seq_rev, 'aug_len_rev': aug_len_rev}))
 
-            new_seq = torch.zeros_like(seq)
-            seq = seq[:length]
-            start_p = self.adj_matrix[self.start_id, seq].toarray().squeeze(0) + eps
-            crop_start = random.choices(range(length), weights=start_p)[0]
-
-            new_seq_length = length - crop_start
-            new_seq[:new_seq_length] = seq[crop_start:]
-            return new_seq, new_seq_length
-        
-        def drop(seq, length, target):
-            if length <= 2:
-                return seq, length
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-            
-            seq_head = seq[:-2].tolist()
-            seq_tail = seq[2:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1 + eps
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1 + eps
-            drop_p = prob_ac / prob_ac_hop2
-            drop_idx = random.choices(range(length), weights=drop_p)[0]
-
-            new_seq = torch.cat((new_seq[:drop_idx], new_seq[drop_idx + 1:], torch.zeros(1)))
-            new_length = length - 1
-            return new_seq, new_length
-        
-        def substitute(seq, length, target):
-            if length <= 2:
-                return seq, length
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-            
-            seq_head = seq[:-2].tolist()
-            seq_tail = seq[2:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1 + eps
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1 + eps
-            substitute_p = 1 - prob_ac / prob_ac_hop2
-            substitute_idx = random.choices(range(length), weights=substitute_p)[0]
-            a, c = seq_head[substitute_idx], seq_tail[substitute_idx]
-            prob_abc = self.adj_matrix[a].multiply(self.adj_matrix.transpose()[c])
-            if prob_abc.count_nonzero() == 0:
-                return new_seq, length
-
-            select_item = random.choices(prob_abc.indices, weights=prob_abc.data)[0]
-
-            if select_item in [self.start_id, self.end_id]:
-                return new_seq, length
-
-            new_seq[substitute_idx] = select_item
-            return new_seq, length
-        
-        def insert(seq, length, target):
-            if length == seq.size(0):
-                seq, length = drop(seq, length, target)
-
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-
-            seq_head = seq[:-1].tolist()
-            seq_tail = seq[1:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1 + eps
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1 + eps
-            insert_p = 1 - prob_ac / prob_ac_hop2
-            insert_idx = random.choices(range(length + 1), weights=insert_p)[0]
-            a, c = seq_head[insert_idx], seq_tail[insert_idx]
-            prob_abc = self.adj_matrix[a].multiply(self.adj_matrix.transpose()[c])
-            if prob_abc.count_nonzero() == 0:
-                return new_seq, length
-                
-            select_item = random.choices(prob_abc.indices, weights=prob_abc.data)[0]
-
-            if select_item in [self.start_id, self.end_id]:
-                return new_seq, length
-
-            new_seq = torch.cat((new_seq[:insert_idx], torch.tensor([select_item]), new_seq[insert_idx:-1]))
-            new_length = length + 1
-            return new_seq, new_length
-            
-        def reorder(seq, length, target):
-            # a -> b -> c -> d
-            # a -> c -> b -> d
-            # p(c|b) = p(b|c)
-            if length <= 2:
-                return seq, length
-
-            new_seq = seq.clone()
-            seq = seq[:length]
-            
-            seq_head = seq[:-1].tolist()
-            seq_tail = seq[1:].tolist()
-            prob_ab = self.adj_matrix[seq_head, seq_tail].A1
-            prob_ba = self.adj_matrix[seq_tail, seq_head].A1
-
-            swap_p = -np.absolute(prob_ab - prob_ba)
-            swap_idx = random.choices(range(length - 1), weights=swap_p)[0]
-            
-            new_seq[[swap_idx, swap_idx + 1]] = new_seq[[swap_idx + 1, swap_idx]]
-            return new_seq, length
-        
-        aug_func = [crop, drop, substitute, insert, reorder]
-        if aug_type == 'random':
-            aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
-        else:
-            aug_idxs = [aug_idx] * self.inter_num
-
-        for i, (aug_idx, target, seq, length) in enumerate(zip(aug_idxs, targets, sequences, lengths)):
-            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.clone(), length, target)
-
+    def _augmentation(self, sequences=None, lengths=None, targets=None):
+        select_index = [np.random.choice(self.same_target_index[target]) for target in targets]
+        aug_sequences = self.dataset[self.iid_list_field][select_index]
+        aug_lengths = self.dataset[self.item_list_length_field][select_index]
+        assert (targets == self.dataset[self.iid_field][select_index].numpy()).all()
         return aug_sequences, aug_lengths
-
-
-class MyRec2TrainDataLoader(MyRecTrainDataLoader):
-
-    def __init__(self, config, dataset, sampler, shuffle=False):
-        super().__init__(config, dataset, sampler, shuffle=shuffle)
-
-        augmentation_type = ['crop', 'insert', 'reorder', 'drop', 'substitute', 'random']
-        self.augmentation_table = {aug_type: idx for idx, aug_type in enumerate(augmentation_type)}
-
-        self.tau = config['aug_tau'] if config['aug_tau'] else 1
     
-    def _augmentation(self, sequences, lengths, targets, aug_type='random', eps=1e-8):
-        aug_sequences = torch.zeros_like(sequences)
-        aug_lengths = torch.zeros_like(lengths)
-        
-        def crop(seq, length, target):
-            if length <= 2:
-                return seq, length
-
-            new_seq = torch.zeros_like(seq)
-            seq = seq[:length]
-            start_p = self.adj_matrix[self.start_id, seq].toarray().squeeze(0)
-            start_p = softmax(start_p / self.tau)
-            crop_start = random.choices(range(length), weights=start_p)[0]
-
-            new_seq_length = length - crop_start
-            new_seq[:new_seq_length] = seq[crop_start:]
-            return new_seq, new_seq_length
-        
-        def drop(seq, length, target):
-            if length <= 2:
-                return seq, length
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-            
-            seq_head = seq[:-2].tolist()
-            seq_tail = seq[2:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1
-            
-            prob_ac_hop2 = np.log(prob_ac_hop2 + eps)
-            prob_ac = np.log(prob_ac + eps)
-            drop_p = softmax((prob_ac - prob_ac_hop2) / self.tau)
-            drop_idx = random.choices(range(length), weights=drop_p)[0]
-
-            new_seq = torch.cat((new_seq[:drop_idx], new_seq[drop_idx + 1:], torch.zeros(1)))
-            new_length = length - 1
-            return new_seq, new_length
-        
-        def substitute(seq, length, target, eps=1e-8):
-            if length <= 2:
-                return seq, length
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-            
-            seq_head = seq[:-2].tolist()
-            seq_tail = seq[2:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1
-            prob_ac_hop2 = np.log(prob_ac_hop2 + eps)
-            prob_ac = np.log(prob_ac + eps)
-
-            substitute_p = softmax((prob_ac_hop2 - prob_ac) / self.tau)
-            substitute_idx = random.choices(range(length), weights=substitute_p)[0]
-            a, c = seq_head[substitute_idx], seq_tail[substitute_idx]
-            prob_abc = self.adj_matrix[a].multiply(self.adj_matrix.transpose()[c])
-            if prob_abc.count_nonzero() == 0:
-                return new_seq, length
-
-            select_p = softmax(prob_abc.data / self.tau)
-            select_item = random.choices(prob_abc.indices, weights=select_p)[0]
-
-            if select_item in [self.start_id, self.end_id]:
-                return new_seq, length
-
-            new_seq[substitute_idx] = select_item
-            return new_seq, length
-        
-        def insert(seq, length, target):
-            if length == seq.size(0):
-                seq, length = drop(seq, length, target)
-
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-
-            seq_head = seq[:-1].tolist()
-            seq_tail = seq[1:].tolist()
-            prob_ac_hop2 = self.adj_matrix2[seq_head, seq_tail].A1
-            prob_ac = self.adj_matrix[seq_head, seq_tail].A1
-
-            prob_ac_hop2 = np.log(prob_ac_hop2 + eps)
-            prob_ac = np.log(prob_ac + eps)
-            
-            insert_p = softmax((prob_ac_hop2 - prob_ac) / self.tau)
-            insert_idx = random.choices(range(length + 1), weights=insert_p)[0]
-            a, c = seq_head[insert_idx], seq_tail[insert_idx]
-            prob_abc = self.adj_matrix[a].multiply(self.adj_matrix.transpose()[c])
-            if prob_abc.count_nonzero() == 0:
-                return new_seq, length
-            
-            select_p = softmax(prob_abc.data / self.tau)
-            select_item = random.choices(prob_abc.indices, weights=select_p)[0]
-
-            if select_item in [self.start_id, self.end_id]:
-                return new_seq, length
-
-            new_seq = torch.cat((new_seq[:insert_idx], torch.tensor([select_item]), new_seq[insert_idx:-1]))
-            new_length = length + 1
-            return new_seq, new_length
-            
-        def reorder(seq, length, target):
-            # a -> b -> c -> d
-            # a -> c -> b -> d
-            # p(c|b) = p(b|c)
-            if length <= 2:
-                return seq, length
-
-            new_seq = seq.clone()
-            seq  = torch.cat((torch.tensor([self.start_id]), seq[:length], target.unsqueeze(0)))
-            
-            seq_a = seq[:-3].tolist()
-            seq_b = seq[1:-2].tolist()
-            seq_c = seq[2:-1].tolist()
-            seq_d = seq[3:].tolist()
-
-            prob_ab = self.adj_matrix[seq_a, seq_b].A1
-            prob_ac = self.adj_matrix[seq_a, seq_c].A1
-            prob_bc = self.adj_matrix[seq_b, seq_c].A1
-            prob_cb = self.adj_matrix[seq_c, seq_b].A1
-            prob_bd = self.adj_matrix[seq_b, seq_d].A1
-            prob_cd = self.adj_matrix[seq_c, seq_d].A1
-
-            prob_ab = np.log(prob_ab + eps)
-            prob_ac = np.log(prob_ac + eps)
-            prob_bc = np.log(prob_bc + eps)
-            prob_cb = np.log(prob_cb + eps)
-            prob_bd = np.log(prob_bd + eps)
-            prob_cd = np.log(prob_cd + eps)
-
-            swap_p = (prob_ac + prob_cb + prob_bd) - (prob_ab + prob_bc + prob_cd)
-            swap_p = softmax(swap_p / self.tau)
-            swap_idx = random.choices(range(length - 1), weights=swap_p)[0]
-            
-            new_seq[[swap_idx, swap_idx + 1]] = new_seq[[swap_idx + 1, swap_idx]]
-            return new_seq, length
-        
-        aug_func = [crop, insert, reorder, drop, substitute]
-        # aug_func = [crop, insert, reorder]
-        if 'random' in aug_type:
-            if aug_type == 'random_all':  # [crop, insert, reorder, drop, substitute]
-                aug_idxs = random.choices(range(len(aug_func)), k=self.inter_num)
-            elif aug_type == 'random':  # [crop, insert, reorder]
-                aug_idxs = random.choices(range(3), k=self.inter_num)
-        else:
-            aug_idx = self.augmentation_table[aug_type]
-            aug_idxs = [aug_idx] * self.inter_num
-
-        for i, (aug_idx, target, seq, length) in enumerate(zip(aug_idxs, targets, sequences, lengths)):
-            aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.clone(), length, target)
-
+    def _augmentation_reverse(self, sequences=None, lengths=None, targets=None):
+        aug_sequences = np.zeros_like(sequences)
+        aug_lengths = np.zeros_like(lengths)
+        for idx, target in enumerate(targets):
+            if target in self.same_target_index_reverse:
+                select_index = np.random.choice(self.same_target_index_reverse[target])
+                aug_sequences[idx] = self.dataset_reverse[self.iid_list_field][select_index]
+                aug_lengths[idx] = self.dataset_reverse[self.item_list_length_field][select_index]
+                # assert target == self.dataset_reverse[self.iid_field][select_index]
+            else:
+                select_index = np.random.choice(self.same_target_index[target])
+                aug_sequences[idx] = self.dataset[self.iid_list_field][select_index]
+                aug_lengths[idx] = self.dataset[self.item_list_length_field][select_index]
+                # assert target == self.dataset[self.iid_field][select_index]
         return aug_sequences, aug_lengths

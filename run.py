@@ -79,11 +79,12 @@ if __name__ == '__main__':
     parser.add_argument('--model', '-m', type=str, default='', help='name of models')
     parser.add_argument('--dataset', '-d', type=str, default='', help='name of datasets')
     parser.add_argument('--config_files', type=str, default=None, help='config files')
+    parser.add_argument('--default_file', type=str, default='Default.yaml', help='default config file')
 
     args, _ = parser.parse_known_args()
 
     config_file_list = args.config_files.strip().split(' ') if args.config_files \
                             else [os.path.join('config', 'model', f'{args.model}.yaml')]
-    config_file_list.append(os.path.join('config', 'Default.yaml'))
+    config_file_list.append(os.path.join('config', args.default_file))
 
     run_recbole(model=args.model, dataset=args.dataset, config_file_list=config_file_list)

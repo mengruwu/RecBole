@@ -150,6 +150,7 @@ def get_dataloader(config, phase):
         'MyRec': _get_CL_dataloader,
         'MyRec2': _get_CL_dataloader,
         'MyRec3': _get_CL_dataloader,
+        'MyRec4': _get_CL_dataloader,
     }
     if config['model'] in register_table:
         return register_table[config['model']](config, phase)
@@ -184,12 +185,10 @@ def _get_CL_dataloader(config, phase):
             return CoSeRecTrainDataLoader
         elif config['model'] == 'DuoRec':
             return DuoRecTrainDataLoader
-        elif config['model'] == 'MyRec':
-            return MyRecTrainDataLoader
-        elif config['model'] == 'MyRec2':
-            return MyRec2TrainDataLoader
         elif config['model'] == 'MyRec3':
             return MyRec3TrainDataLoader
+        elif config['model'] == 'MyRec4':
+            return MyRec4TrainDataLoader
         return CLTrainDataLoader
     else:
         eval_strategy = config['eval_neg_sample_args']['strategy']

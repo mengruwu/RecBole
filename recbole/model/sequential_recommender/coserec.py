@@ -15,10 +15,6 @@ Reference:
 
 """
 
-import torch
-import torch.nn.functional as F
-from torch import nn
-
 from recbole.model.sequential_recommender.cl4rec import CL4Rec
 
 

@@ -33,6 +33,7 @@ class SequentialDataset(Dataset):
     def __init__(self, config):
         self.max_item_list_len = config['MAX_ITEM_LIST_LENGTH']
         self.item_list_length_field = config['ITEM_LIST_LENGTH_FIELD']
+        self.reversed = False
         super().__init__(config)
         if config['benchmark_filename'] is not None:
             self._benchmark_presets()
@@ -93,7 +94,10 @@ class SequentialDataset(Dataset):
 
         self._check_field('uid_field', 'time_field')
         max_item_list_len = self.config['MAX_ITEM_LIST_LENGTH']
-        self.sort(by=[self.uid_field, self.time_field], ascending=True)
+        if self.reversed:
+            self.sort(by=[self.uid_field, self.time_field], ascending=[True, False])
+        else:
+            self.sort(by=[self.uid_field, self.time_field], ascending=True)
         last_uid = None
         uid_list, item_list_index, target_index, item_list_length = [], [], [], []
         seq_start = 0

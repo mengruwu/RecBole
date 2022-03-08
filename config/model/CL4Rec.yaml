@@ -19,9 +19,9 @@ cl_lambda: 0.1
 aug_type1: random  # ['random', 'crop', 'mask', 'reorder']
 aug_type2: null
 tau: 1  # softmax
-eta: 0.2   # crop
-gamma: 0.3   # mask
-beta: 0.2   # reorder
+crop_rate: 0.2
+mask_rate: 0.3
+reorder_rate: 0.2
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 20
