@@ -280,7 +280,7 @@ class Config(object):
                     raise ValueError(f"neg_sampling [{self.final_config_dict['neg_sampling']}] should be None "
                                      f"when the loss_type is CE.")
                 self.final_config_dict['MODEL_INPUT_TYPE'] = InputType.POINTWISE
-            elif self.final_config_dict['loss_type'] in ['BPR']:
+            elif self.final_config_dict['loss_type'] in ['BPR', 'BCE']:
                 self.final_config_dict['MODEL_INPUT_TYPE'] = InputType.PAIRWISE
         else:
             raise ValueError('Either Model has attr \'input_type\',' 'or arg \'loss_type\' should exist in config.')
