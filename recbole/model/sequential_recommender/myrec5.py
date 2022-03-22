@@ -22,15 +22,13 @@ from torch import nn
 from recbole.model.sequential_recommender.cl4rec import CL4Rec
 
 
-class DuoRec(CL4Rec):
+class MyRec5(CL4Rec):
     r"""
     TODO
     """
 
     def __init__(self, config, dataset):
-        super(DuoRec, self).__init__(config, dataset)
-
-        # load parameters info
+        super(MyRec5, self).__init__(config, dataset)
         self.cl_type = config['cl_type']
 
     def calculate_loss(self, interaction):
@@ -38,6 +36,7 @@ class DuoRec(CL4Rec):
         item_seq_len = interaction[self.ITEM_SEQ_LEN]
         seq_output = self.forward(item_seq, item_seq_len)
         pos_items = interaction[self.POS_ITEM_ID]
+        test_item_emb = self.item_embedding.weight
         if self.loss_type == 'BPR':
             neg_items = interaction[self.NEG_ITEM_ID]
             pos_items_emb = self.item_embedding(pos_items)
@@ -46,7 +45,6 @@ class DuoRec(CL4Rec):
             neg_score = torch.sum(seq_output * neg_items_emb, dim=-1)  # [B]
             loss = self.loss_fct(pos_score, neg_score)
         else:  # self.loss_type = 'CE'
-            test_item_emb = self.item_embedding.weight
             logits = torch.matmul(seq_output, test_item_emb.transpose(0, 1))
             loss = self.loss_fct(logits, pos_items)
         
@@ -57,20 +55,21 @@ class DuoRec(CL4Rec):
         if self.cl_type in ['us', 'su', 'us_x']:
             aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
             su_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
-
+        
+        cl_lambda = self.cl_lambda
         if self.cl_type in ['us', 'un']:
-            cl_loss = self.info_nce(seq_output, un_aug_seq_output)
-            cl_loss = self.cl_lambda * cl_loss
+            cl_loss = self.info_nce(seq_output, un_aug_seq_output, target=pos_items)
+            cl_loss = cl_lambda * cl_loss
             losses.append(cl_loss)
 
         if self.cl_type in ['us', 'su']:
-            cl_loss = self.info_nce(seq_output, su_aug_seq_output)
-            cl_loss = self.cl_lambda * cl_loss
+            cl_loss = self.info_nce(seq_output, su_aug_seq_output, target=pos_items)
+            cl_loss = cl_lambda * cl_loss
             losses.append(cl_loss)
 
         if self.cl_type == 'us_x':
-            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output)
-            cl_loss = self.cl_lambda * cl_loss
+            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output, target=pos_items)
+            cl_loss = cl_lambda * cl_loss
             losses.append(cl_loss)
 
         return tuple(losses)

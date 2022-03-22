@@ -4,14 +4,14 @@
 # @Email   : hui.wang@ruc.edu.cn
 
 """
-SASRec
+DuoRec
 ################################################
 
 Reference:
-    Wang-Cheng Kang et al. "Self-Attentive Sequential Recommendation." in ICDM 2018.
+    Ruihong Qiu et al. "Contrastive Learning for Representation Degeneration Problem in Sequential Recommendation" in WSDM 2022.
 
 Reference:
-    https://github.com/kang205/SASRec
+    https://github.com/RuihongQiu/DuoRec
 
 """
 
@@ -19,12 +19,16 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from recbole.model.sequential_recommender.duorec import DuoRec
+from recbole.model.sequential_recommender.myrec4 import MyRec4
 
 
-class MyRec4(DuoRec):
+class MyRec6(MyRec4):
+    r"""
+    TODO
+    """
+
     def __init__(self, config, dataset):
-        super(MyRec4, self).__init__(config, dataset)
+        super(MyRec6, self).__init__(config, dataset)
 
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
@@ -44,40 +48,25 @@ class MyRec4(DuoRec):
             loss = self.loss_fct(logits, pos_items)
         
         losses = [loss]
-        if self.cl_type in ['us', 'un', 'us_x', 'rs_un_x', 'all']:
-            un_aug_seq_output = self.forward(item_seq, item_seq_len)
-        
-        if self.cl_type in ['us', 'su', 'us_x', 'rs_su_x', 'all']:
+        if self.cl_type in ['su', 'rs_su_x', 'all']:
             aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
             su_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
         
-        if self.cl_type in ['rs', 'rs_un_x', 'rs_su_x', 's2s', 'all']:
+        if self.cl_type in ['rs', 'rs_su_x', 'all']:
             aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
             su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
 
         cl_losses = []
-        if self.cl_type in ['us', 'un']:
-            cl_loss = self.info_nce(seq_output, un_aug_seq_output)
+        if self.cl_type in ['su', 'all']:
+            cl_loss = self.info_nce(seq_output, su_aug_seq_output, pos_items)
             cl_losses.append(cl_loss)
 
-        if self.cl_type in ['us', 'su']:
-            cl_loss = self.info_nce(seq_output, su_aug_seq_output)
-            cl_losses.append(cl_loss)
-
-        if self.cl_type in ['us_x', 'all']:
-            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output)
-            cl_losses.append(cl_loss)
-
-        if self.cl_type == 'rs':
-            cl_loss = self.info_nce(seq_output, su_aug_seq_rev_output)
-            cl_losses.append(cl_loss)
-        
-        if self.cl_type in ['rs_un_x', 'all']:
-            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_rev_output)
+        if self.cl_type in ['rs', 'all']:
+            cl_loss = self.info_nce(seq_output, su_aug_seq_rev_output, pos_items)
             cl_losses.append(cl_loss)
 
         if self.cl_type in ['rs_su_x', 'all']:
-            cl_loss = self.info_nce(su_aug_seq_rev_output, su_aug_seq_output)
+            cl_loss = self.info_nce(su_aug_seq_rev_output, su_aug_seq_output, pos_items)
             cl_losses.append(cl_loss)
         
         cl_losses = [loss * self.cl_lambda / len(cl_losses) for loss in cl_losses]

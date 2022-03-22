@@ -98,14 +98,9 @@ class CL4Rec(SASRec):
                 interaction['aug1'], interaction['aug_len1'], interaction['aug2'], interaction['aug_len2']
             seq_output1 = self.forward(aug_item_seq1, aug_len1)
             seq_output2 = self.forward(aug_item_seq2, aug_len2)
-            logits, labels = self.info_nce(seq_output1, seq_output2)
+            cl_loss = self.info_nce(seq_output1, seq_output2)
         else:
-            logits, labels = self.info_nce(seq_output, seq_output)
-
-        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
-            cl_loss = self.calculate_decoupled_cl_loss(logits, labels)
-        else: # original infonce
-            cl_loss = self.cl_loss_fct(logits, labels)
+            cl_loss = self.info_nce(seq_output, seq_output)
         return cl_loss
     
     def calculate_decoupled_cl_loss(self, input, target):
@@ -116,7 +111,7 @@ class CL4Rec(SASRec):
         dcl_loss = torch.mean(-input_pos + torch.log(input_neg_exp_sum))
         return dcl_loss
 
-    def info_nce(self, z_i, z_j):
+    def info_nce(self, z_i, z_j, target=None):
         """
         We do not sample negative examples explicitly.
         Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
@@ -138,12 +133,21 @@ class CL4Rec(SASRec):
         sim_j_i = torch.diag(sim, -cur_batch_size)
 
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)  # [2B, 1]
+        if target != None:
+            same_c_mask = torch.tile(target, (cur_batch_size, 1)) == target.reshape(-1, 1)
+            same_c_mask = torch.tile(same_c_mask, (2, 2))
+            sim[same_c_mask] = -1.e4
+
         negative_samples = sim[mask].reshape(N, -1)  # [2B, 2(B-1)]
 
         logits = torch.cat((positive_samples, negative_samples), dim=1)  # [2B, 2B-1]
         # the first column stores positive pair scores
         labels = torch.zeros(N, dtype=torch.long, device=z_i.device)
-        return logits, labels
+        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
+            loss = self.calculate_decoupled_cl_loss(logits, labels)
+        else: # original infonce
+            loss = self.cl_loss_fct(logits, labels)
+        return loss
 
     def full_sort_predict(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
