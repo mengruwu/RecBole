@@ -153,6 +153,7 @@ def get_dataloader(config, phase):
         'MyRec4': _get_CL_dataloader,
         'MyRec5': _get_CL_dataloader,
         'MyRec6': _get_CL_dataloader,
+        'MyRec7': _get_CL_dataloader,
     }
     if config['model'] in register_table:
         return register_table[config['model']](config, phase)
@@ -194,6 +195,8 @@ def _get_CL_dataloader(config, phase):
         elif config['model'] == 'MyRec5':
             return DuoRecTrainDataLoader
         elif config['model'] == 'MyRec6':
+            return MyRec4TrainDataLoader
+        elif config['model'] == 'MyRec7':
             return MyRec4TrainDataLoader
         return CLTrainDataLoader
     else:
