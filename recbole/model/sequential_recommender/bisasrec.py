@@ -16,67 +16,42 @@ Reference:
 """
 
 import wandb
+import copy
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from recbole.model.sequential_recommender.myrec4 import MyRec4
+from recbole.model.sequential_recommender.myrec7 import MyRec7
 
 
-class MyRec7(MyRec4):
+class BiSASRec(MyRec7):
     r"""
     TODO
     """
 
     def __init__(self, config, dataset):
-        super(MyRec7, self).__init__(config, dataset)
-        self.cl_loss_weight = config['cl_loss_weight']
-        self.cl_su_lambda = config['cl_su_lambda']
-        self.cl_loss_debiased_type = config['cl_loss_debiased_type']
-
-    def info_nce(self, z_i, z_j, target=None):
-        """
-        We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
-        """
-        cur_batch_size = z_i.size(0)
-        N = 2 * cur_batch_size
-        if cur_batch_size != self.batch_size:
-            mask = self.mask_correlated_samples(cur_batch_size)
-        else:
-            mask = self.default_mask
-        z = torch.cat((z_i, z_j), dim=0)  # [2B H]
+        super(BiSASRec, self).__init__(config, dataset)
+        self.reverse_trm_encoder = copy.deepcopy(self.trm_encoder)
     
-        if self.similarity_type == 'cos':
-            sim = self.sim(z.unsqueeze(1), z.unsqueeze(0), dim=2) / self.tau
-        elif self.similarity_type == 'dot':
-            sim = self.sim(z, z.T) / self.tau
+    def forward(self, item_seq, item_seq_len, reverse=False):
+        position_ids = torch.arange(item_seq.size(1), dtype=torch.long, device=item_seq.device)
+        position_ids = position_ids.unsqueeze(0).expand_as(item_seq)
+        position_embedding = self.position_embedding(position_ids)
 
-        sim_i_j = torch.diag(sim, cur_batch_size)
-        sim_j_i = torch.diag(sim, -cur_batch_size)
+        item_emb = self.item_embedding(item_seq)
+        input_emb = item_emb + position_embedding
+        input_emb = self.LayerNorm(input_emb)
+        input_emb = self.dropout(input_emb)
 
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)  # [2B, 1]
-        if target != None:
-            same_c_mask = torch.tile(target, (cur_batch_size, 1)) == target.reshape(-1, 1)
-            same_c_mask = torch.tile(same_c_mask, (2, 2))
-            sim[same_c_mask] = -1.e8
-            if self.cl_loss_debiased_type == 'norm':
-                negative_samples_weight = torch.log(1. - torch.mean(same_c_mask[mask].reshape(N, -1).float(), dim=1))
-                negative_samples_weight = negative_samples_weight.reshape(-1, 1)
-                sim = sim - negative_samples_weight
-
-        negative_samples = sim[mask].reshape(N, -1)  # [2B, 2(B-1)]
-        # normalize
+        extended_attention_mask = self.get_attention_mask(item_seq)
         
-
-        logits = torch.cat((positive_samples, negative_samples), dim=1)  # [2B, 2B-1]
-        # the first column stores positive pair scores
-        labels = torch.zeros(N, dtype=torch.long, device=z_i.device)
-        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
-            loss = self.calculate_decoupled_cl_loss(logits, labels)
-        else: # original infonce
-            loss = self.cl_loss_fct(logits, labels)
-        return loss
+        if reverse:
+            trm_output = self.reverse_trm_encoder(input_emb, extended_attention_mask, output_all_encoded_layers=True)
+        else:
+            trm_output = self.trm_encoder(input_emb, extended_attention_mask, output_all_encoded_layers=True)
+        output = trm_output[-1]
+        output = self.gather_indexes(output, item_seq_len - 1)
+        return output  # [B H]
 
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
@@ -103,7 +78,7 @@ class MyRec7(MyRec4):
         
         if self.cl_type in ['rs', 'rs_su_x', 'all']:
             aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
-            su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
+            su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev, reverse=True)
         
         logits = torch.matmul(su_aug_seq_rev_output, test_item_emb.transpose(0, 1))
         rs_loss = self.loss_fct(logits, pos_items)
