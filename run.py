@@ -87,4 +87,7 @@ if __name__ == '__main__':
                             else [os.path.join('config', 'model', f'{args.model}.yaml')]
     config_file_list.append(os.path.join('config', args.default_file))
 
+    if os.path.exists(os.path.join('config', 'dataset', f'{args.dataset}.yaml')):
+        config_file_list.append(os.path.join('config', 'dataset', f'{args.dataset}.yaml'))
+
     run_recbole(model=args.model, dataset=args.dataset, config_file_list=config_file_list)

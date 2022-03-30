@@ -34,6 +34,9 @@ def main():
                             else [os.path.join('config', 'model', f'{model}.yaml')]
     config_file_list.append(os.path.join('config', args.default_file))
 
+    if os.path.exists(os.path.join('config', 'dataset', f'{dataset}.yaml')):
+        config_file_list.append(os.path.join('config', 'dataset', f'{dataset}.yaml'))
+
     params_file = args.params_file if args.params_file \
                         else os.path.join('config', 'hyper', f'{model}.hyper')
     export_result_file = os.path.join('saved', f'{model}-{dataset}.hyper.result')

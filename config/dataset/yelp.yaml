@@ -1,0 +1,7 @@
+ITEM_ID_FIELD: business_id
+RATING_FIELD: stars
+TIME_FIELD: date
+load_col:
+  inter: [user_id, business_id, stars, date]
+val_interval:  # 2019-01-01 ~ Now
+  date: '[1546272000,inf)'
