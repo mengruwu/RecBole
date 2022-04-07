@@ -105,9 +105,9 @@ class MyRec7(MyRec4):
             aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
             su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
         
-        logits = torch.matmul(su_aug_seq_rev_output, test_item_emb.transpose(0, 1))
-        rs_loss = self.loss_fct(logits, pos_items)
-        if self.cl_su_lambda > 0:
+        if self.cl_su_lambda > 0 and self.cl_type in ['rs', 'rs_su_x', 'all']:
+            logits = torch.matmul(su_aug_seq_rev_output, test_item_emb.transpose(0, 1))
+            rs_loss = self.loss_fct(logits, pos_items)
             losses.append(self.cl_su_lambda * rs_loss)
 
         cl_losses = []

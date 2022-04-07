@@ -54,7 +54,6 @@ class CLTrainDataLoader(TrainDataLoader):
     def augmentation(self):
         raise NotImplementedError('Method augmentation should be implemented.')
 
-
 class CL4RecTrainDataLoader(CLTrainDataLoader):
 
     def __init__(self, config, dataset, sampler, shuffle=False):
@@ -71,7 +70,7 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
     
     def _crop(self, seq, length):
         new_seq = np.zeros_like(seq)
-        new_seq_length = max(1, int(length * self.crop_rate))
+        new_seq_length = max(1, int(length * (1 - self.crop_rate)))
         crop_start = random.randint(0, length - new_seq_length)
         new_seq[:new_seq_length] = seq[crop_start:crop_start + new_seq_length]
         return new_seq, new_seq_length
@@ -99,7 +98,7 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
                                      'aug2': aug_seq2, 'aug_len2': aug_len2}))
         return cur_data
 
-    def _augmentation(self, sequences, lengths, targets=None, aug_type='random_all'):
+    def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
         aug_sequences = np.zeros_like(sequences)
         aug_lengths = np.zeros_like(lengths)
         num = aug_sequences.shape[0]
@@ -115,7 +114,6 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
             aug_sequences[i][:], aug_lengths[i] = aug_func[aug_idx](seq.copy(), length)
         
         return aug_sequences, aug_lengths
-
 
 class CoSeRecTrainDataLoader(CL4RecTrainDataLoader):
 
@@ -277,7 +275,7 @@ class DuoRecTrainDataLoader(CLTrainDataLoader):
         aug_lengths = self.dataset[self.item_list_length_field][select_index]
         # assert (targets == self.dataset[self.iid_field][select_index].numpy()).all()
         return aug_sequences, aug_lengths
-
+      
 class MyRec3TrainDataLoader(DuoRecTrainDataLoader):
 
     def __init__(self, config, dataset, sampler, shuffle=False):
@@ -371,3 +369,50 @@ class MyRec4TrainDataLoader(DuoRecTrainDataLoader):
                 aug_lengths[idx] = self.dataset[self.item_list_length_field][select_index]
                 # assert target == self.dataset[self.iid_field][select_index]
         return aug_sequences, aug_lengths
+
+class MyRec8TrainDataLoader(MyRec4TrainDataLoader):
+
+    def __init__(self, config, dataset, sampler, shuffle=False):
+        super().__init__(config, dataset, sampler, shuffle=shuffle)
+
+        self.ucl_type = config['ucl_type']
+        ucl_dataloader_table = {
+            'cl4rec': CL4RecTrainDataLoader,
+            'coserec': CoSeRecTrainDataLoader,
+        }
+        ucl_aug_type_table = {
+            'cl4rec': 'random',
+            'coserec': 'random_all',
+        }
+        self.ucl_dataloader = ucl_dataloader_table[self.ucl_type](config, dataset, sampler, shuffle)
+        self._ucl_aug_type = ucl_aug_type_table[self.ucl_type]
+    
+    def augmentation(self, cur_data):
+        sequences = cur_data[self.iid_list_field].numpy()
+        lengths = cur_data[self.item_list_length_field].numpy()
+        targets = cur_data[self.iid_field].numpy()
+        update = {}
+        if self.cl_type in ['su', 'rs_su_x', 'all']:
+            aug_seq, aug_len = self._supervised_augmentation(targets)
+            aug_seq, aug_len = self._unsupervised_augmentation(aug_seq.numpy(), aug_len.numpy(), targets)
+            update.update({'aug': aug_seq, 'aug_len': aug_len})
+ 
+        if self.cl_type in ['rs', 'rs_su_x', 'all']:
+            aug_seq_rev, aug_len_rev = self._supervised_reverse_augmentation(sequences, lengths, targets)
+            aug_seq_rev, aug_len_rev = self._unsupervised_augmentation(aug_seq_rev, aug_len_rev, targets)
+            update.update({'aug_rev': aug_seq_rev, 'aug_len_rev': aug_len_rev})
+
+        cur_data.update(Interaction(update))
+        return cur_data
+
+    def _supervised_augmentation(self, targets):
+        return super()._augmentation(targets=targets)
+    
+    def _supervised_reverse_augmentation(self, sequences, lengths, targets):
+        return super()._augmentation_reverse(sequences=sequences, lengths=lengths, targets=targets)
+    
+    def _unsupervised_augmentation(self, sequences, lengths, targets=None):
+        return self.ucl_dataloader._augmentation(sequences,
+                                                 lengths,
+                                                 targets=targets,
+                                                 aug_type=self._ucl_aug_type)
