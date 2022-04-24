@@ -21,6 +21,7 @@ from recbole.model.sequential_recommender.myrec6 import MyRec6
 from recbole.model.sequential_recommender.myrec7 import MyRec7
 from recbole.model.sequential_recommender.myrec8 import MyRec8
 from recbole.model.sequential_recommender.bisasrec import BiSASRec
+from recbole.model.sequential_recommender.bicl4rec import BiCL4Rec
 from recbole.model.sequential_recommender.narm import NARM
 from recbole.model.sequential_recommender.nextitnet import NextItNet
 from recbole.model.sequential_recommender.s3rec import S3Rec

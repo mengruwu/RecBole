@@ -1,0 +1,5 @@
+cl_lambda choice [0.1, 0.3, 0.5, 0.7, 0.9]
+MAX_ITEM_LIST_LENGTH choice [20, 50]
+train_batch_size choice [256, 512]
+cl_loss_debiased_type choice [None]
+cl_type choice ['rs', 'rs_su_x']
