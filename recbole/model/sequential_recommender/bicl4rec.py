@@ -31,6 +31,8 @@ class BiCL4Rec(DuoRec):
     def __init__(self, config, dataset):
         super(BiCL4Rec, self).__init__(config, dataset)
         self.cl_loss_debiased_type = config['cl_loss_debiased_type']
+        self.perturbation = config['perturbation']
+        self.noise_eps = config['noise_eps']
 
     def info_nce(self, z_i, z_j, target=None):
         """
@@ -75,6 +77,12 @@ class BiCL4Rec(DuoRec):
         else: # original infonce
             loss = self.cl_loss_fct(logits, labels)
         return loss
+    
+    def perturb(self, emb):
+        noise = torch.rand(emb.shape, device=emb.device)
+        noise = F.normalize(noise) * self.noise_eps
+        emb = emb + torch.mul(torch.sign(emb), noise)
+        return emb
 
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
@@ -92,7 +100,7 @@ class BiCL4Rec(DuoRec):
         else:  # self.loss_type = 'CE'
             logits = torch.matmul(seq_output, test_item_emb.transpose(0, 1))
             loss = self.loss_fct(logits, pos_items)
-        
+          
         losses = [loss]
         if self.cl_type in ['su', 'rs_su_x', 'all']:
             aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
@@ -101,6 +109,14 @@ class BiCL4Rec(DuoRec):
         if self.cl_type in ['rs', 'rs_su_x', 'all']:
             aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
             su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
+
+        if self.perturbation:
+            seq_output = self.perturb(seq_output)
+            if self.cl_type in ['su', 'rs_su_x', 'all']:
+                su_aug_seq_output = self.perturb(su_aug_seq_output)
+
+            if self.cl_type in ['rs', 'rs_su_x', 'all']:
+                su_aug_seq_rev_output = self.perturb(su_aug_seq_rev_output)
 
         cl_losses = []
         if self.cl_loss_debiased_type in ['mean', 'norm']:
