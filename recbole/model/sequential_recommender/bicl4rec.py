@@ -57,8 +57,8 @@ class BiCL4Rec(DuoRec):
 
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)  # [2B, 1]
         if target != None:
-            same_c_mask = torch.tile(target, (cur_batch_size, 1)) == target.reshape(-1, 1)
-            same_c_mask = torch.tile(same_c_mask, (2, 2))
+            same_c_mask = target.repeat(cur_batch_size, 1) == target.reshape(-1, 1)
+            same_c_mask = same_c_mask.repeat(2, 2)
             sim[same_c_mask] = -1.e8
             # normalize negative scores (according to real num of negative)
             # in other words, each positive sample would be paired with the same quantity of negative scores. => p/(p+2(B-1)*mean(ns)))
