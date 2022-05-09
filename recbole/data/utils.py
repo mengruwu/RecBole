@@ -80,7 +80,7 @@ def load_split_dataloaders(saved_dataloaders_file):
     return dataloaders
 
 
-def data_preparation(config, dataset, save=False):
+def data_preparation(config, dataset, save=False, train_drop_ratio=0.):
     """Split the dataset by :attr:`config['eval_args']` and create training, validation and test dataloader.
 
     Args:
@@ -96,7 +96,7 @@ def data_preparation(config, dataset, save=False):
             - test_data (AbstractDataLoader): The dataloader for testing.
     """
     model_type = config['MODEL_TYPE']
-    built_datasets = dataset.build()
+    built_datasets = dataset.build(train_drop_ratio)
     logger = getLogger()
 
     train_dataset, valid_dataset, test_dataset = built_datasets

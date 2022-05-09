@@ -180,7 +180,7 @@ class SequentialDataset(Dataset):
         local_inter_feat = Interaction(new_dict)
         return self._create_sparse_matrix(local_inter_feat, self.uid_field, self.iid_field, form, value_field)
 
-    def build(self):
+    def build(self, train_drop_ratio=0):
         """Processing dataset according to evaluation setting, including Group, Order and Split.
         See :class:`~recbole.config.eval_setting.EvalSetting` for details.
 
@@ -195,4 +195,4 @@ class SequentialDataset(Dataset):
         if ordering_args != 'TO':
             raise ValueError(f'The ordering args for sequential recommendation has to be \'TO\'')
 
-        return super().build()
+        return super().build(train_drop_ratio=train_drop_ratio)

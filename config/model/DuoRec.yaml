@@ -25,6 +25,7 @@ cl_type: us_x  # ['us_x', 'un', 'su', 'us', null]
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 20
+train_drop_ratio: 0.
 
 # Training Settings
 train_batch_size: 512

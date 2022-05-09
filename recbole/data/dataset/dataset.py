@@ -1301,6 +1301,22 @@ class Dataset(object):
         nxt.inter_feat = new_inter_feat
         return nxt
 
+    def drop_inter(self, drop_ratio=0.):
+        if drop_ratio <= 0.:
+            return
+        
+        not_dropped_cnt = int(self.__len__() * (1 - drop_ratio))
+        not_dropped_index = np.random.choice(self.__len__(), size=not_dropped_cnt, replace=False)
+
+        for k in self.inter_feat.interaction:
+            self.inter_feat.interaction[k] = self.inter_feat.interaction[k][not_dropped_index]
+
+        self.logger.info(f'[{not_dropped_cnt - len(not_dropped_index)}] dropped interactions.')
+
+        self.inter_feat.length = -1
+        for k in self.inter_feat.interaction:
+            self.inter_feat.length = max(self.inter_feat.length, self.inter_feat.interaction[k].shape[0])
+
     def _drop_unused_col(self):
         """Drop columns which are loaded for data preparation but not used in model.
         """
@@ -1455,7 +1471,7 @@ class Dataset(object):
         """
         self.inter_feat.sort(by=by, ascending=ascending)
 
-    def build(self):
+    def build(self, train_drop_ratio=0.):
         """Processing dataset according to evaluation setting, including Group, Order and Split.
         See :class:`~recbole.config.eval_setting.EvalSetting` for details.
 
@@ -1502,6 +1518,8 @@ class Dataset(object):
         else:
             raise NotImplementedError(f'The splitting_method [{split_mode}] has not been implemented.')
 
+        datasets[0].drop_inter(drop_ratio=train_drop_ratio)
+            
         return datasets
 
     def save(self):
