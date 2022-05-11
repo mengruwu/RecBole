@@ -1302,7 +1302,7 @@ class Dataset(object):
         return nxt
 
     def drop_inter(self, drop_ratio=0.):
-        if drop_ratio <= 0.:
+        if drop_ratio == None or drop_ratio <= 0.:
             return
         
         not_dropped_cnt = int(self.__len__() * (1 - drop_ratio))

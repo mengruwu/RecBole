@@ -97,6 +97,9 @@ class CL4RecTrainDataLoader(CLTrainDataLoader):
         cur_data.update(Interaction({'aug1': aug_seq1, 'aug_len1': aug_len1,
                                      'aug2': aug_seq2, 'aug_len2': aug_len2}))
         return cur_data
+    
+    def _shuffle(self):
+        self.dataset.shuffle()
 
     def _augmentation(self, sequences, lengths, targets=None, aug_type='random'):
         aug_sequences = np.zeros_like(sequences)
