@@ -305,11 +305,11 @@ class BiCL4RecTrainDataLoader(DuoRecTrainDataLoader):
         sequences = cur_data[self.iid_list_field].numpy()
         lengths = cur_data[self.item_list_length_field].numpy()
         update = {}
-        if self.cl_type in ['su', 'rs_su_x', 'all']:
+        if self.cl_type in ['su', 'rs_su_x', 'rs_su', 'all']:
             aug_seq, aug_len = self._augmentation(targets=targets)
             update.update({'aug': aug_seq, 'aug_len': aug_len})
 
-        if self.cl_type in ['rs', 'rs_su_x', 'all']:
+        if self.cl_type in ['rs', 'rs_su_x', 'rs_su', 'all']:
             aug_seq_rev, aug_len_rev = self._augmentation_reverse(sequences=sequences, lengths=lengths, targets=targets)
             update.update({'aug_rev': aug_seq_rev, 'aug_len_rev': aug_len_rev})
 
