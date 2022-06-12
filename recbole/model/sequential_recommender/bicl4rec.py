@@ -123,6 +123,10 @@ class BiCL4Rec(DuoRec):
 
             if self.cl_type in ['rs', 'rs_su_x', 'all']:
                 su_aug_seq_rev_output = self.perturb(su_aug_seq_rev_output)
+            
+            if not self.cl_type:
+                un_aug_seq_output1 = self.perturb(seq_output)
+                un_aug_seq_output2 = self.perturb(seq_output)
 
         cl_losses = []
         if self.cl_loss_debiased_type in ['mean', 'norm']:
@@ -142,6 +146,13 @@ class BiCL4Rec(DuoRec):
             cl_loss = self.info_nce(su_aug_seq_rev_output, su_aug_seq_output, target)
             cl_losses.append(cl_loss)
         
+        if not self.cl_type:
+            if self.perturbation:
+                cl_loss = self.info_nce(un_aug_seq_output1, un_aug_seq_output2, target)
+            else:
+                cl_loss = self.info_nce(seq_output, seq_output, target)
+            cl_losses.append(cl_loss)
+
         cl_losses = [loss * self.cl_lambda / len(cl_losses) for loss in cl_losses]
 
         return tuple(losses + cl_losses) 
