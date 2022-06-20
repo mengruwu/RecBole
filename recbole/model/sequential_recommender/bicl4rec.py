@@ -137,7 +137,7 @@ class BiCL4Rec(DuoRec):
         if self.cl_type in ['su', 'rs_su', 'all']: # duorec
             cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output, target) 
             cl_losses.append(cl_loss)
-
+        
         if self.cl_type in ['rs', 'rs_su']: # reverse seq x original seq
             cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_rev_output, target)
             cl_losses.append(cl_loss)
