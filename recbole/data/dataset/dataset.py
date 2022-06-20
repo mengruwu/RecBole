@@ -1487,11 +1487,7 @@ class Dataset(object):
         """
         self.inter_feat.sort(by=by, ascending=ascending)
 
-<<<<<<< HEAD
-    def build(self, train_drop_ratio=0.):
-=======
     def build(self, drop_inter_ratio=0., drop_user_ratio=0.):
->>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
         """Processing dataset according to evaluation setting, including Group, Order and Split.
         See :class:`~recbole.config.eval_setting.EvalSetting` for details.
 
