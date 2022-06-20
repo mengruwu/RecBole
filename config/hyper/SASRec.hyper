@@ -1,3 +1,4 @@
-attn_dropout_prob choice [0.2, 0.5]
+hidden_dropout_prob choice [0.5]
 MAX_ITEM_LIST_LENGTH choice [50, 20]
 train_batch_size choice [256, 512]
+drop_user_ratio choice [0.2, 0.4, 0.6, 0.8]

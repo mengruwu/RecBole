@@ -1302,7 +1302,11 @@ class Dataset(object):
         return nxt
 
     def drop_inter(self, drop_ratio=0.):
+<<<<<<< HEAD
         if drop_ratio <= 0.:
+=======
+        if drop_ratio == None or drop_ratio <= 0.:
+>>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
             return
         
         not_dropped_cnt = int(self.__len__() * (1 - drop_ratio))
@@ -1316,6 +1320,25 @@ class Dataset(object):
         self.inter_feat.length = -1
         for k in self.inter_feat.interaction:
             self.inter_feat.length = max(self.inter_feat.length, self.inter_feat.interaction[k].shape[0])
+<<<<<<< HEAD
+=======
+    
+    def drop_user(self, drop_ratio=0.):
+        if drop_ratio == None or drop_ratio <= 0.:
+            return
+
+        not_dropped_user_amount = int(self.user_num * (1 - drop_ratio))
+        not_dropped_user = np.random.choice(range(1, self.user_num), size=not_dropped_user_amount, replace=False)
+        selector = torch.isin(
+            self.inter_feat.interaction[self.config['USER_ID_FIELD']],
+            torch.tensor(not_dropped_user)
+        )
+        for k in self.inter_feat.interaction:
+            self.inter_feat.interaction[k] = self.inter_feat.interaction[k][selector]
+        self.inter_feat.length = -1
+        for k in self.inter_feat.interaction:
+            self.inter_feat.length = max(self.inter_feat.length, self.inter_feat.interaction[k].shape[0])
+>>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
 
     def _drop_unused_col(self):
         """Drop columns which are loaded for data preparation but not used in model.
@@ -1471,7 +1494,11 @@ class Dataset(object):
         """
         self.inter_feat.sort(by=by, ascending=ascending)
 
+<<<<<<< HEAD
     def build(self, train_drop_ratio=0.):
+=======
+    def build(self, drop_inter_ratio=0., drop_user_ratio=0.):
+>>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
         """Processing dataset according to evaluation setting, including Group, Order and Split.
         See :class:`~recbole.config.eval_setting.EvalSetting` for details.
 
@@ -1518,7 +1545,12 @@ class Dataset(object):
         else:
             raise NotImplementedError(f'The splitting_method [{split_mode}] has not been implemented.')
 
+<<<<<<< HEAD
         datasets[0].drop_inter(drop_ratio=train_drop_ratio)
+=======
+        datasets[0].drop_inter(drop_ratio=drop_inter_ratio)
+        datasets[0].drop_user(drop_ratio=drop_user_ratio)
+>>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
             
         return datasets
 

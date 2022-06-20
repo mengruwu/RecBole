@@ -102,21 +102,31 @@ class BiCL4Rec(DuoRec):
             loss = self.loss_fct(logits, pos_items)
           
         losses = [loss]
-        if self.cl_type in ['su', 'rs_su_x', 'all']:
+        if self.cl_type in ['un', 'rs', 'su', 'all', 'rs_su']:
+            un_aug_seq_output = self.forward(item_seq, item_seq_len)
+
+        if self.cl_type in ['su', 'rs_su_x', 'rs_su', 'all']:
             aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
             su_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
         
-        if self.cl_type in ['rs', 'rs_su_x', 'all']:
+        if self.cl_type in ['rs', 'rs_su_x', 'rs_su', 'all']:
             aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
             su_aug_seq_rev_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
 
         if self.perturbation:
             seq_output = self.perturb(seq_output)
-            if self.cl_type in ['su', 'rs_su_x', 'all']:
+            if self.cl_type in ['un', 'rs', 'su', 'rs_su', 'all']:
+                un_aug_seq_output = self.perturb(un_aug_seq_output)
+                
+            if self.cl_type in ['su', 'rs_su', 'rs_su_x', 'all']:
                 su_aug_seq_output = self.perturb(su_aug_seq_output)
 
-            if self.cl_type in ['rs', 'rs_su_x', 'all']:
+            if self.cl_type in ['rs', 'rs_su', 'rs_su_x', 'all']:
                 su_aug_seq_rev_output = self.perturb(su_aug_seq_rev_output)
+            
+            if not self.cl_type:
+                un_aug_seq_output1 = self.perturb(seq_output)
+                un_aug_seq_output2 = self.perturb(seq_output)
 
         cl_losses = []
         if self.cl_loss_debiased_type in ['mean', 'norm']:
@@ -124,18 +134,25 @@ class BiCL4Rec(DuoRec):
         else:  # mean 
             target = None
 
-        if self.cl_type in ['su', 'all']:
-            cl_loss = self.info_nce(seq_output, su_aug_seq_output, target)
+        if self.cl_type in ['su', 'rs_su', 'all']: # duorec
+            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output, target) 
             cl_losses.append(cl_loss)
 
-        if self.cl_type in ['rs', 'all']:
-            cl_loss = self.info_nce(seq_output, su_aug_seq_rev_output, target)
+        if self.cl_type in ['rs', 'rs_su']: # reverse seq x original seq
+            cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_rev_output, target)
             cl_losses.append(cl_loss)
 
-        if self.cl_type in ['rs_su_x', 'all']:
+        if self.cl_type in ['rs_su_x', 'all']: # reverse seq x forward seq
             cl_loss = self.info_nce(su_aug_seq_rev_output, su_aug_seq_output, target)
             cl_losses.append(cl_loss)
         
+        if not self.cl_type:
+            if self.perturbation:
+                cl_loss = self.info_nce(un_aug_seq_output1, un_aug_seq_output2, target)
+            else:
+                cl_loss = self.info_nce(seq_output, seq_output, target)
+            cl_losses.append(cl_loss)
+
         cl_losses = [loss * self.cl_lambda / len(cl_losses) for loss in cl_losses]
 
         return tuple(losses + cl_losses) 

@@ -80,7 +80,7 @@ def load_split_dataloaders(saved_dataloaders_file):
     return dataloaders
 
 
-def data_preparation(config, dataset, save=False, train_drop_ratio=0.):
+def data_preparation(config, dataset, save=False, drop_inter_ratio=0., drop_user_ratio=0.):
     """Split the dataset by :attr:`config['eval_args']` and create training, validation and test dataloader.
 
     Args:
@@ -96,7 +96,7 @@ def data_preparation(config, dataset, save=False, train_drop_ratio=0.):
             - test_data (AbstractDataLoader): The dataloader for testing.
     """
     model_type = config['MODEL_TYPE']
-    built_datasets = dataset.build(train_drop_ratio)
+    built_datasets = dataset.build(drop_inter_ratio=config['drop_inter_ratio'], drop_user_ratio=config['drop_user_ratio'])
     logger = getLogger()
 
     train_dataset, valid_dataset, test_dataset = built_datasets
@@ -157,6 +157,7 @@ def get_dataloader(config, phase):
         'MyRec8': _get_CL_dataloader,
         'BiSASRec': _get_CL_dataloader,
         'BiCL4Rec': _get_CL_dataloader,
+        'BiCL4Caser': _get_CL_dataloader,
     }
     if config['model'] in register_table:
         return register_table[config['model']](config, phase)
@@ -199,7 +200,7 @@ def _get_CL_dataloader(config, phase):
             return MyRec8TrainDataLoader
         elif config['model'] in ['MyRec4', 'MyRec6', 'MyRec7', 'BiSASRec']:
             return MyRec4TrainDataLoader
-        elif config['model'] == 'BiCL4Rec':
+        elif config['model'] in ['BiCL4Rec', 'BiCL4Caser']:
             return BiCL4RecTrainDataLoader
         return CLTrainDataLoader
     else:
