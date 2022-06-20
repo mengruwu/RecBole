@@ -1534,12 +1534,8 @@ class Dataset(object):
         else:
             raise NotImplementedError(f'The splitting_method [{split_mode}] has not been implemented.')
 
-<<<<<<< HEAD
-        datasets[0].drop_inter(drop_ratio=train_drop_ratio)
-=======
         datasets[0].drop_inter(drop_ratio=drop_inter_ratio)
         datasets[0].drop_user(drop_ratio=drop_user_ratio)
->>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
             
         return datasets
 

@@ -16,11 +16,11 @@ loss_type: CE  # ['CE', 'BPR']
 similarity_type: dot  # ['dot', 'cos']
 tau: 1
 cl_loss_type: infonce  # ['dcl', 'infonce']
-cl_loss_debiased_type: norm  # ['mean', 'norm']
+cl_loss_debiased_type: null  # ['mean', 'norm']
 cl_lambda: 0.1
 cl_type: all  # [rs, su, rs_su_x, all]
-perturbation: True
-noise_eps: 0.1 # only work if perturbation == True
+perturbation: null
+noise_eps: 0. # only work if perturbation == True
 # rs = reverse supervised aug only
 # su = supervised aug only
 # rs_su_x = agree supervised aug with reverse supervised aug
