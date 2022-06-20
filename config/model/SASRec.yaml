@@ -21,4 +21,5 @@ drop_user_ratio: 0.
 
 # Training Settings
 train_batch_size: 512
-neg_sampling: null
+neg_sampling: 
+  uniform: 1

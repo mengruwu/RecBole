@@ -157,6 +157,7 @@ def get_dataloader(config, phase):
         'MyRec8': _get_CL_dataloader,
         'BiSASRec': _get_CL_dataloader,
         'BiCL4Rec': _get_CL_dataloader,
+        'BiCL4Caser': _get_CL_dataloader,
     }
     if config['model'] in register_table:
         return register_table[config['model']](config, phase)
@@ -199,7 +200,7 @@ def _get_CL_dataloader(config, phase):
             return MyRec8TrainDataLoader
         elif config['model'] in ['MyRec4', 'MyRec6', 'MyRec7', 'BiSASRec']:
             return MyRec4TrainDataLoader
-        elif config['model'] == 'BiCL4Rec':
+        elif config['model'] in ['BiCL4Rec', 'BiCL4Caser']:
             return BiCL4RecTrainDataLoader
         return CLTrainDataLoader
     else:
