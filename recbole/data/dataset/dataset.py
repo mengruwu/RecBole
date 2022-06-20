@@ -1302,11 +1302,7 @@ class Dataset(object):
         return nxt
 
     def drop_inter(self, drop_ratio=0.):
-<<<<<<< HEAD
-        if drop_ratio <= 0.:
-=======
         if drop_ratio == None or drop_ratio <= 0.:
->>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
             return
         
         not_dropped_cnt = int(self.__len__() * (1 - drop_ratio))
@@ -1320,8 +1316,6 @@ class Dataset(object):
         self.inter_feat.length = -1
         for k in self.inter_feat.interaction:
             self.inter_feat.length = max(self.inter_feat.length, self.inter_feat.interaction[k].shape[0])
-<<<<<<< HEAD
-=======
     
     def drop_user(self, drop_ratio=0.):
         if drop_ratio == None or drop_ratio <= 0.:
@@ -1338,7 +1332,6 @@ class Dataset(object):
         self.inter_feat.length = -1
         for k in self.inter_feat.interaction:
             self.inter_feat.length = max(self.inter_feat.length, self.inter_feat.interaction[k].shape[0])
->>>>>>> 7297f461fcbde957d666f38e3f3c7977c67c4ae6
 
     def _drop_unused_col(self):
         """Drop columns which are loaded for data preparation but not used in model.
