@@ -28,7 +28,8 @@ noise_eps: 0. # only work if perturbation == True
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 10
-train_drop_ratio: 0.
+drop_inter_ratio: 0.
+drop_user_ratio: 0.
 
 # Training Settings
 train_batch_size: 512

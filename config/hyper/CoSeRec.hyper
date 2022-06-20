@@ -1,6 +1,6 @@
 cl_lambda choice [0.1, 0.3, 0.5, 0.7, 0.9]
-aug_type1 choice ['crop']
+aug_type1 choice ['reorder']
 MAX_ITEM_LIST_LENGTH choice [20, 50]
 perturbation choice [True]
 noise_eps choice [0.2]
-crop_rate choice [0.2, 0.4, 0.6, 0.8]
+reorder_rate choice [0.2, 0.4, 0.6, 0.8]

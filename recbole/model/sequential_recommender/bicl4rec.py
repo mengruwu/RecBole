@@ -115,7 +115,7 @@ class BiCL4Rec(DuoRec):
 
         if self.perturbation:
             seq_output = self.perturb(seq_output)
-            if self.cl_type in ['un', 'rs', 'su', 'rs_su', 'all']:
+            if self.cl_type in ['un', 'rs', 'su', 'all', 'rs_su']:
                 un_aug_seq_output = self.perturb(un_aug_seq_output)
                 
             if self.cl_type in ['su', 'rs_su', 'rs_su_x', 'all']:
