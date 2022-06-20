@@ -42,6 +42,9 @@ class CL4Rec(SASRec):
         self.cl_loss_type = config['cl_loss_type']
         self.similarity_type = config['similarity_type']
 
+        self.perturbation = config['perturbation']
+        self.noise_eps = config['noise_eps']
+
         # define layers and loss
         self.item_embedding = nn.Embedding(self.n_items + 1, self.hidden_size, padding_idx=0)  # for mask
         self.default_mask = self.mask_correlated_samples(self.batch_size)
@@ -56,6 +59,12 @@ class CL4Rec(SASRec):
         
         # parameters initialization
         self.apply(self._init_weights)
+
+    def perturb(self, emb):
+        noise = torch.rand(emb.shape, device=emb.device)
+        noise = F.normalize(noise) * self.noise_eps
+        emb = emb + torch.mul(torch.sign(emb), noise)
+        return emb
 
     def mask_correlated_samples(self, batch_size):
         N = batch_size
@@ -98,6 +107,10 @@ class CL4Rec(SASRec):
                 interaction['aug1'], interaction['aug_len1'], interaction['aug2'], interaction['aug_len2']
             seq_output1 = self.forward(aug_item_seq1, aug_len1)
             seq_output2 = self.forward(aug_item_seq2, aug_len2)
+
+            if self.perturbation:
+                seq_output1 = self.perturb(seq_output1)
+                seq_output2 = self.perturb(seq_output2)
             cl_loss = self.info_nce(seq_output1, seq_output2)
         else:
             cl_loss = self.info_nce(seq_output, seq_output)
