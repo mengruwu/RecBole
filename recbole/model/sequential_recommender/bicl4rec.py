@@ -102,7 +102,7 @@ class BiCL4Rec(DuoRec):
             loss = self.loss_fct(logits, pos_items)
           
         losses = [loss]
-        if self.cl_type in ['un', 'all', 'rs_su']:
+        if self.cl_type in ['un', 'rs', 'su', 'all', 'rs_su']:
             un_aug_seq_output = self.forward(item_seq, item_seq_len)
 
         if self.cl_type in ['su', 'rs_su_x', 'rs_su', 'all']:
@@ -115,7 +115,7 @@ class BiCL4Rec(DuoRec):
 
         if self.perturbation:
             seq_output = self.perturb(seq_output)
-            if self.cl_type in ['un', 'rs_su', 'all']:
+            if self.cl_type in ['un', 'rs', 'su', 'rs_su', 'all']:
                 un_aug_seq_output = self.perturb(un_aug_seq_output)
                 
             if self.cl_type in ['su', 'rs_su', 'rs_su_x', 'all']:
@@ -138,11 +138,7 @@ class BiCL4Rec(DuoRec):
             cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_output, target) 
             cl_losses.append(cl_loss)
 
-        if self.cl_type in ['rs']: # reverse seq x original seq
-            cl_loss = self.info_nce(seq_output, su_aug_seq_rev_output, target)
-            cl_losses.append(cl_loss)
-        
-        if self.cl_type in ['rs_su']: # reverse seq x original seq
+        if self.cl_type in ['rs', 'rs_su']: # reverse seq x original seq
             cl_loss = self.info_nce(un_aug_seq_output, su_aug_seq_rev_output, target)
             cl_losses.append(cl_loss)
 
