@@ -1,0 +1,6 @@
+cl_lambda choice [0.1, 0.3, 0.5]
+num_layers choice [1, 2]
+dropout_prob choice [0.1, 0.3]
+MAX_ITEM_LIST_LENGTH choice [10, 20, 50]
+train_batch_size choice [1024, 2048, 4096]
+noise_eps choice [0.1, 0.2]

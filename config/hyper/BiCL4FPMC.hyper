@@ -1,0 +1,4 @@
+cl_lambda choice [0.1, 0.3, 0.5]
+embedding_size choice [32, 64, 128]
+train_batch_size choice [256, 512, 1024, 2048, 4096]
+noise_eps choice [0.1, 0.2]

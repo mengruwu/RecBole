@@ -42,7 +42,10 @@ class CLTrainDataLoader(TrainDataLoader):
         self.item_list_length_field = dataset.item_list_length_field
 
     def _next_batch_data(self):
-        cur_data = self.dataset[self.pr:self.pr + self.step]
+        if 'FPMC' in self.config['model']:
+            cur_data = self._neg_sampling(self.dataset[self.pr:self.pr + self.step])
+        else:
+            cur_data = self.dataset[self.pr:self.pr + self.step]
         cur_data = self.augmentation(cur_data)
         self.pr += self.step
         return cur_data
@@ -302,14 +305,14 @@ class BiCL4RecTrainDataLoader(DuoRecTrainDataLoader):
     
     def augmentation(self, cur_data):
         targets = cur_data[self.iid_field].numpy()
-        sequences = cur_data[self.iid_list_field].numpy()
-        lengths = cur_data[self.item_list_length_field].numpy()
         update = {}
         if self.cl_type in ['su', 'rs_su_x', 'rs_su', 'all']:
             aug_seq, aug_len = self._augmentation(targets=targets)
             update.update({'aug': aug_seq, 'aug_len': aug_len})
 
         if self.cl_type in ['rs', 'rs_su_x', 'rs_su', 'all']:
+            sequences = cur_data[self.iid_list_field].numpy()
+            lengths = cur_data[self.item_list_length_field].numpy()
             aug_seq_rev, aug_len_rev = self._augmentation_reverse(sequences=sequences, lengths=lengths, targets=targets)
             update.update({'aug_rev': aug_seq_rev, 'aug_len_rev': aug_len_rev})
 

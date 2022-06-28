@@ -1,0 +1,25 @@
+# Environment Settings
+gpu_id: 1
+
+# Model Settings
+embedding_size: 64
+pooling_type: average
+reg_weight: [0.0, 0.0]
+loss_type: CE
+
+# CL Settings
+similarity_type: dot  # ['dot', 'cos']
+tau: 1
+cl_loss_type: infonce  # ['dcl', 'infonce']
+cl_loss_debiased_type: null  # ['mean', 'norm']
+cl_lambda: 0.1
+cl_type: rs_su  # [rs, su, rs_su_x, all]
+perturbation: True
+noise_eps: 0.1 # only work if perturbation == True
+
+# Data settings
+MAX_ITEM_LIST_LENGTH: 5
+
+# Training Settings
+train_batch_size: 4096
+neg_sampling: null

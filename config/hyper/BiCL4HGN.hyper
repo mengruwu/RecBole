@@ -1,0 +1,6 @@
+cl_lambda choice [0.0001, 0.001, 0.01, 0.1]
+pooling_type choice ['average', 'max']
+reg_weight choice '[0.00,0.00]','[0.001,0.00001]'
+MAX_ITEM_LIST_LENGTH choice [5]
+train_batch_size choice [1024, 2048]
+noise_eps choice [0.1, 0.2]

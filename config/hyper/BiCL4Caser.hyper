@@ -1,0 +1,8 @@
+cl_lambda choice [0.00001, 0.0001, 0.001, 0.01, 0.1]
+dropout_prob choice [0.5]
+reg_weight choice [0.0]
+nv choice [4, 8]
+nh choice [8, 16, 32]
+MAX_ITEM_LIST_LENGTH choice [20, 50]
+noise_eps choice [0.1, 0.2]
+train_batch_size choice [256, 512, 1024]
