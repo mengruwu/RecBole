@@ -18,13 +18,17 @@ tau: 1
 cl_loss_type: infonce  # ['dcl', 'infonce']
 cl_loss_debiased_type: null  # ['mean', 'norm']
 cl_lambda: 0.1
-cl_type: all  # [rs, su, rs_su_x, all]
 perturbation: null
 noise_eps: 0. # only work if perturbation == True
-# rs = reverse supervised aug only
-# su = supervised aug only
-# rs_su_x = agree supervised aug with reverse supervised aug
-# all = rs + su + rs_su_x
+cl_type: rs+fs
+# rs = reverse supervised aug x original seq
+# fs = forward supervised aug x original seq
+# rs+fs
+# fs_drop_x = duorec = forward supervised aug x encode original seq again
+# rs+fs_drop_x
+
+# rs_fs_x = reverse supervised aug x forward supervised aug
+
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 10
