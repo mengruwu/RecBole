@@ -12,5 +12,6 @@ saved/
 *.egg-info/
 docs/build/
 
-wandb/
 picture/
+wandb/*
+/ray_log*

@@ -96,7 +96,7 @@ Model Initialization
 
 .. code:: python
 
-    model = BPR(config, train_data).to(config['device'])
+    model = BPR(config, train_data.dataset).to(config['device'])
 
 Initializing the model according to the model names, and initializing the instance of the model.
 
@@ -195,6 +195,9 @@ In this example, we present how to test a model based on the previous saved para
 
         # trainer loading and initialization
         trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
+
+        # When calculate ItemCoverage metrics, we need to run this code for set item_nums in eval_collector.
+        trainer.eval_collector.data_collect(train_data)
 
         # model evaluation
         checkpoint_file = 'checkpoint.pth'

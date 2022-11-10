@@ -4,9 +4,9 @@
 # @Email  : cx.tian@outlook.com
 
 # UPDATE:
-# @Time   : 2020/9/16
-# @Author : Shanlei Mu
-# @Email  : slmu@ruc.edu.cn
+# @Time   : 2020/9/16, 2021/12/22
+# @Author : Shanlei Mu, Gaowei Zhang
+# @Email  : slmu@ruc.edu.cn, 1462034631@qq.com
 
 r"""
 LightGCN
@@ -33,7 +33,7 @@ class LightGCN(GeneralRecommender):
     r"""LightGCN is a GCN-based recommender model.
 
     LightGCN includes only the most essential component in GCN — neighborhood aggregation — for
-    collaborative filtering. Specifically, LightGCN learns user and item embeddings by linearly 
+    collaborative filtering. Specifically, LightGCN learns user and item embeddings by linearly
     propagating them on the user-item interaction graph, and uses the weighted sum of the embeddings
     learned at all layers as the final embedding.
 
@@ -45,16 +45,25 @@ class LightGCN(GeneralRecommender):
         super(LightGCN, self).__init__(config, dataset)
 
         # load dataset info
-        self.interaction_matrix = dataset.inter_matrix(form='coo').astype(np.float32)
+        self.interaction_matrix = dataset.inter_matrix(form="coo").astype(np.float32)
 
         # load parameters info
-        self.latent_dim = config['embedding_size']  # int type:the embedding size of lightGCN
-        self.n_layers = config['n_layers']  # int type:the layer num of lightGCN
-        self.reg_weight = config['reg_weight']  # float32 type: the weight decay for l2 normalization
+        self.latent_dim = config[
+            "embedding_size"
+        ]  # int type:the embedding size of lightGCN
+        self.n_layers = config["n_layers"]  # int type:the layer num of lightGCN
+        self.reg_weight = config[
+            "reg_weight"
+        ]  # float32 type: the weight decay for l2 normalization
+        self.require_pow = config["require_pow"]
 
         # define layers and loss
-        self.user_embedding = torch.nn.Embedding(num_embeddings=self.n_users, embedding_dim=self.latent_dim)
-        self.item_embedding = torch.nn.Embedding(num_embeddings=self.n_items, embedding_dim=self.latent_dim)
+        self.user_embedding = torch.nn.Embedding(
+            num_embeddings=self.n_users, embedding_dim=self.latent_dim
+        )
+        self.item_embedding = torch.nn.Embedding(
+            num_embeddings=self.n_items, embedding_dim=self.latent_dim
+        )
         self.mf_loss = BPRLoss()
         self.reg_loss = EmbLoss()
 
@@ -67,7 +76,7 @@ class LightGCN(GeneralRecommender):
 
         # parameters initialization
         self.apply(xavier_uniform_initialization)
-        self.other_parameter_name = ['restore_user_e', 'restore_item_e']
+        self.other_parameter_name = ["restore_user_e", "restore_item_e"]
 
     def get_norm_adj_mat(self):
         r"""Get the normalized interaction matrix of users and items.
@@ -82,11 +91,22 @@ class LightGCN(GeneralRecommender):
             Sparse tensor of the normalized interaction matrix.
         """
         # build adj matrix
-        A = sp.dok_matrix((self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32)
+        A = sp.dok_matrix(
+            (self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32
+        )
         inter_M = self.interaction_matrix
         inter_M_t = self.interaction_matrix.transpose()
-        data_dict = dict(zip(zip(inter_M.row, inter_M.col + self.n_users), [1] * inter_M.nnz))
-        data_dict.update(dict(zip(zip(inter_M_t.row + self.n_users, inter_M_t.col), [1] * inter_M_t.nnz)))
+        data_dict = dict(
+            zip(zip(inter_M.row, inter_M.col + self.n_users), [1] * inter_M.nnz)
+        )
+        data_dict.update(
+            dict(
+                zip(
+                    zip(inter_M_t.row + self.n_users, inter_M_t.col),
+                    [1] * inter_M_t.nnz,
+                )
+            )
+        )
         A._update(data_dict)
         # norm adj matrix
         sumArr = (A > 0).sum(axis=1)
@@ -99,7 +119,7 @@ class LightGCN(GeneralRecommender):
         L = sp.coo_matrix(L)
         row = L.row
         col = L.col
-        i = torch.LongTensor([row, col])
+        i = torch.LongTensor(np.array([row, col]))
         data = torch.FloatTensor(L.data)
         SparseL = torch.sparse.FloatTensor(i, data, torch.Size(L.shape))
         return SparseL
@@ -125,7 +145,9 @@ class LightGCN(GeneralRecommender):
         lightgcn_all_embeddings = torch.stack(embeddings_list, dim=1)
         lightgcn_all_embeddings = torch.mean(lightgcn_all_embeddings, dim=1)
 
-        user_all_embeddings, item_all_embeddings = torch.split(lightgcn_all_embeddings, [self.n_users, self.n_items])
+        user_all_embeddings, item_all_embeddings = torch.split(
+            lightgcn_all_embeddings, [self.n_users, self.n_items]
+        )
         return user_all_embeddings, item_all_embeddings
 
     def calculate_loss(self, interaction):
@@ -152,7 +174,13 @@ class LightGCN(GeneralRecommender):
         pos_ego_embeddings = self.item_embedding(pos_item)
         neg_ego_embeddings = self.item_embedding(neg_item)
 
-        reg_loss = self.reg_loss(u_ego_embeddings, pos_ego_embeddings, neg_ego_embeddings)
+        reg_loss = self.reg_loss(
+            u_ego_embeddings,
+            pos_ego_embeddings,
+            neg_ego_embeddings,
+            require_pow=self.require_pow,
+        )
+
         loss = mf_loss + self.reg_weight * reg_loss
 
         return loss

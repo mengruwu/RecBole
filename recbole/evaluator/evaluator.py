@@ -10,15 +10,15 @@ recbole.evaluator.evaluator
 
 from recbole.evaluator.register import metrics_dict
 from recbole.evaluator.collector import DataStruct
+from collections import OrderedDict
 
 
 class Evaluator(object):
-    """Evaluator is used to check parameter correctness, and summarize the results of all metrics.
-    """
+    """Evaluator is used to check parameter correctness, and summarize the results of all metrics."""
 
     def __init__(self, config):
         self.config = config
-        self.metrics = [metric.lower() for metric in self.config['metrics']]
+        self.metrics = [metric.lower() for metric in self.config["metrics"]]
         self.metric_class = {}
 
         for metric in self.metrics:
@@ -31,10 +31,10 @@ class Evaluator(object):
             dataobject (DataStruct): It contains all the information needed for metrics.
 
         Returns:
-            dict: such as ``{'hit@20': 0.3824, 'recall@20': 0.0527, 'hit@10': 0.3153, 'recall@10': 0.0329, 'gauc': 0.9236}``
+            collections.OrderedDict: such as ``{'hit@20': 0.3824, 'recall@20': 0.0527, 'hit@10': 0.3153, 'recall@10': 0.0329, 'gauc': 0.9236}``
 
         """
-        result_dict = {}
+        result_dict = OrderedDict()
         for metric in self.metrics:
             metric_val = self.metric_class[metric].calculate_metric(dataobject)
             result_dict.update(metric_val)

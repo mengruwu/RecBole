@@ -4,7 +4,6 @@
 
 import argparse
 import os
-from recbole.utils.utils import init_wandb
 import wandb
 
 from logging import getLogger
@@ -31,7 +30,7 @@ def run_recbole(model=None, dataset=None, config_file_list=None, config_dict=Non
     init_logger(config)
     logger = getLogger()
     # wandb initialization
-    init_wandb(config['wandb_project'], config['wandb_entity'], config)
+    # init_wandb(config['wandb_project'], config['wandb_entity'], config)
 
     logger.info(config)
 
