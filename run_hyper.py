@@ -32,7 +32,7 @@ def hyperopt_tune(args):
     # plz set algo='exhaustive' to use exhaustive search, in this case, max_evals is auto set
     # in other case, max_evals needs to be set manually
     config_file_list = args.config_files.strip().split(" ") \
-                       if args.config_files
+                       if args.config_files \
                        else [os.path.join("config", "model", f"{model}.yaml")]
     config_file_list.append(os.path.join("config", args.default_file))
 
@@ -52,7 +52,7 @@ def hyperopt_tune(args):
         algo="exhaustive",
         early_stop=10,
         max_evals=100,
-        params_file=args.params_file,
+        params_file=params_file,
         fixed_config_file_list=config_file_list,
         display_file=args.display_file,
     )

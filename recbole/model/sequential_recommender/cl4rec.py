@@ -39,11 +39,10 @@ class CL4Rec(SASRec):
         self.batch_size = config['train_batch_size']
         self.tau = config['tau']
         self.cl_lambda = config['cl_lambda']
-        self.cl_loss_type = config['cl_loss_type']
         self.similarity_type = config['similarity_type']
 
-        self.perturbation = config['perturbation']
-        self.noise_eps = config['noise_eps']
+        # self.perturbation = config['perturbation']
+        # self.noise_eps = config['noise_eps']
 
         # define layers and loss
         self.item_embedding = nn.Embedding(self.n_items + 1, self.hidden_size, padding_idx=0)  # for mask
@@ -54,8 +53,7 @@ class CL4Rec(SASRec):
         elif self.similarity_type == 'cos':
             self.sim = F.cosine_similarity
 
-        if self.cl_loss_type == 'infonce':
-            self.cl_loss_fct = nn.CrossEntropyLoss()
+        self.cl_loss_fct = nn.CrossEntropyLoss()
         
         # parameters initialization
         self.apply(self._init_weights)
@@ -150,17 +148,19 @@ class CL4Rec(SASRec):
             same_c_mask = torch.tile(target, (cur_batch_size, 1)) == target.reshape(-1, 1)
             same_c_mask = torch.tile(same_c_mask, (2, 2))
             sim[same_c_mask] = -1.e4
+            # normalize negative scores (according to real num of negative)
+            # in other words, each positive sample would be paired with the same quantity of negative scores. => p/(p+2(B-1)*mean(ns)))
+            # if self.cl_loss_debiased_type == 'norm':
+            #     negative_samples_weight = torch.log(1. - torch.mean(same_c_mask[mask].reshape(N, -1).float(), dim=1))
+            #     negative_samples_weight = negative_samples_weight.reshape(-1, 1)
+            #     sim = sim - negative_samples_weight
 
         negative_samples = sim[mask].reshape(N, -1)  # [2B, 2(B-1)]
 
         logits = torch.cat((positive_samples, negative_samples), dim=1)  # [2B, 2B-1]
         # the first column stores positive pair scores
         labels = torch.zeros(N, dtype=torch.long, device=z_i.device)
-        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
-            loss = self.calculate_decoupled_cl_loss(logits, labels)
-        else: # original infonce
-            loss = self.cl_loss_fct(logits, labels)
-        return loss
+        return self.cl_loss_fct(logits, labels)
 
     def full_sort_predict(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]

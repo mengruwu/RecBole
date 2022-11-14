@@ -206,7 +206,7 @@ class SequentialDataset(Dataset):
             local_inter_feat, self.uid_field, self.iid_field, form, value_field
         )
 
-    def build(self, drop_inter_ratio=0, drop_user_ratio=0.):
+    def build(self, drop_inter_ratio=0., drop_user_ratio=0.):
         """Processing dataset according to evaluation setting, including Group, Order and Split.
         See :class:`~recbole.config.eval_setting.EvalSetting` for details.
 

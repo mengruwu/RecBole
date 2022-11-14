@@ -15,6 +15,7 @@ from scipy.sparse import coo_matrix
 from sklearn.preprocessing import normalize
 from scipy.special import softmax
 from itertools import combinations
+from collections import defaultdict
 
 from recbole.data.dataloader.general_dataloader import TrainDataLoader
 from recbole.data.interaction import Interaction
@@ -41,18 +42,10 @@ class CLTrainDataLoader(TrainDataLoader):
         self.iid_list_field = getattr(dataset, f'{self.iid_field}_list_field')
         self.item_list_length_field = dataset.item_list_length_field
 
-    def _next_batch_data(self):
-        if 'FPMC' in self.config['model']:
-            cur_data = self._neg_sampling(self.dataset[self.pr:self.pr + self.step])
-        else:
-            cur_data = self.dataset[self.pr:self.pr + self.step]
+    def collate_fn(self, index):
+        cur_data = super().collate_fn(index)
         cur_data = self.augmentation(cur_data)
-        self.pr += self.step
         return cur_data
-    
-    def _shuffle(self):
-        super()._shuffle()
-        self.augmentation()
 
     def augmentation(self):
         raise NotImplementedError('Method augmentation should be implemented.')
@@ -251,59 +244,67 @@ class DuoRecTrainDataLoader(CLTrainDataLoader):
 
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
-        self.rand_idx = np.random.uniform(size=config['train_batch_size'])
+        self.n = 1 + dataset.inter_num // config['train_batch_size']
+        self._init_augmentation()
+        self.i = 0
 
     def augmentation(self, cur_data):
         targets = cur_data[self.iid_field].numpy()
         aug_seq, aug_len = self._augmentation(targets=targets)
         cur_data.update(Interaction({'aug': aug_seq, 'aug_len': aug_len}))
+        self.i = (self.i + 1) % self.n
         return cur_data
 
     def _init_augmentation(self):
-        target_item_list = self.dataset.inter_feat[self.iid_field].numpy()
-        index = {}
+        target_item_list = self._dataset.inter_feat[self.iid_field].numpy()
+        index = defaultdict(list)
         for i, key in enumerate(target_item_list):
-            if key not in index:
-                index[key] = [i]
-            else:
-                index[key].append(i)
-        self.same_target_index = index
-        self.same_target_len = {k: len(v) for k, v in index.items()}
+            index[key].append(i)
 
-    def _shuffle(self):
-        self.dataset.shuffle()
-        self._init_augmentation()
+        same_target_index = np.empty([self._dataset.item_num + 1, self.n], dtype=np.int32)
+        for k, v in index.items():
+            same_target_index[k] = np.random.choice(v, self.n)
+
+        self.same_target_index = same_target_index
 
     def _augmentation(self, sequences=None, lengths=None, targets=None):
-        aug_idx = [int(_idx * self.same_target_len[target]) for target, _idx in zip(targets, self.rand_idx)]
-        select_index = [self.same_target_index[target][idx] for target, idx in zip(targets, aug_idx)]
-        aug_sequences = self.dataset[self.iid_list_field][select_index]
-        aug_lengths = self.dataset[self.item_list_length_field][select_index]
-        # assert (targets == self.dataset[self.iid_field][select_index].numpy()).all()
+        select_index = self.same_target_index[targets, self.i]
+
+        d = self._dataset[select_index]
+        aug_sequences = d[self.iid_list_field]
+        aug_lengths = d[self.item_list_length_field]
+        if not (targets == d[self.iid_field].numpy()).all():
+            self._init_augmentation()
+            return self._augmentation(targets=targets)
+
+        # assert (targets == d[self.iid_field].numpy()).all()
         return aug_sequences, aug_lengths
 
 
 class BiCL4RecTrainDataLoader(DuoRecTrainDataLoader):
     def __init__(self, config, dataset, sampler, shuffle=False):
         super().__init__(config, dataset, sampler, shuffle=shuffle)
-        self._init_reverse_augmentation()
         self.cl_type = config['cl_type']
-        
-    def _init_reverse_augmentation(self):
-        self.dataset_reverse = self.dataset.copy(self.dataset.inter_feat)
+        self.dataset_reverse = self._dataset.copy(self._dataset.inter_feat)
         self.dataset_reverse.reversed = True
         self.dataset_reverse.data_augmentation()
+        
+    def _init_reverse_augmentation(self):
         target_item_list = self.dataset_reverse.inter_feat[self.iid_field].numpy()
-        index = {}
+        index = defaultdict(list)
         for i, key in enumerate(target_item_list):
-            if key not in index:
-                index[key] = [i]
-            else:
-                index[key].append(i)
-        self.same_target_index_reverse = index
-        self.same_target_len_reverse = {k: len(v) for k, v in index.items()}
+            index[key].append(i)
+
+        same_target_index = np.empty([self._dataset.item_num + 1, self.n], dtype=np.int32)
+        for k, v in index.items():
+            same_target_index[k] = np.random.choice(v, self.n)
+
+        self.same_target_index_reverse = same_target_index
     
     def augmentation(self, cur_data):
+        if self.i == 0:
+            self._init_reverse_augmentation()
+
         targets = cur_data[self.iid_field].numpy()
         update = {}
         if 'fs' in self.cl_type:
@@ -311,33 +312,19 @@ class BiCL4RecTrainDataLoader(DuoRecTrainDataLoader):
             update.update({'aug': aug_seq, 'aug_len': aug_len})
 
         if 'rs' in self.cl_type:
-            sequences = cur_data[self.iid_list_field].numpy()
-            lengths = cur_data[self.item_list_length_field].numpy()
-            aug_seq_rev, aug_len_rev = self._augmentation_reverse(sequences=sequences, lengths=lengths, targets=targets)
+            aug_seq_rev, aug_len_rev = self._augmentation_reverse(targets=targets)
             update.update({'aug_rev': aug_seq_rev, 'aug_len_rev': aug_len_rev})
 
         cur_data.update(Interaction(update))
+        self.i = (self.i + 1) % self.n
         return cur_data
 
-    def _augmentation(self, sequences=None, lengths=None, targets=None):
-        return super()._augmentation(sequences, lengths, targets)
-    
     def _augmentation_reverse(self, sequences=None, lengths=None, targets=None):
-        aug_sequences = np.zeros_like(sequences)
-        aug_lengths = np.zeros_like(lengths)
-        for idx, target in enumerate(targets):
-            if target in self.same_target_index_reverse:
-                select_index = int(self.rand_idx[idx] * self.same_target_len_reverse[target])
-                select_index = self.same_target_index_reverse[target][select_index]
-                aug_sequences[idx] = self.dataset_reverse[self.iid_list_field][select_index]
-                aug_lengths[idx] = self.dataset_reverse[self.item_list_length_field][select_index]
-                # assert target == self.dataset_reverse[self.iid_field][select_index]
-            else:
-                select_index = int(self.rand_idx[idx] * self.same_target_len[target])
-                select_index = self.same_target_index[target][select_index]
-                aug_sequences[idx] = self.dataset[self.iid_list_field][select_index]
-                aug_lengths[idx] = self.dataset[self.item_list_length_field][select_index]
-                # assert target == self.dataset[self.iid_field][select_index]
+        select_index = self.same_target_index_reverse[targets, self.i]
+        d = self.dataset_reverse[select_index]
+        aug_sequences = d[self.iid_list_field]
+        aug_lengths = d[self.item_list_length_field]
+        # assert (targets == d[self.iid_field].numpy()).all()
         return aug_sequences, aug_lengths
 
 

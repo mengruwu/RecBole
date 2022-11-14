@@ -449,8 +449,13 @@ class Trainer(AbstractTrainer):
             if verbose:
                 self.logger.info(train_loss_output)
             self._add_train_loss_to_tensorboard(epoch_idx, train_loss)
+            log = {"epoch": epoch_idx, "train_step": epoch_idx, "train_time": training_end_time - training_start_time}
+            if type(train_loss) == tuple:
+                log.update({f"train_loss{i}": l for i, l in enumerate(train_loss)})
+            else:
+                log.update({"train_loss": train_loss})
             self.wandblogger.log_metrics(
-                {"epoch": epoch_idx, "train_loss": train_loss, "train_step": epoch_idx},
+                log,
                 head="train",
             )
 
@@ -493,7 +498,7 @@ class Trainer(AbstractTrainer):
                     self.logger.info(valid_result_output)
                 self.tensorboard.add_scalar("Vaild_score", valid_score, epoch_idx)
                 self.wandblogger.log_metrics(
-                    {**valid_result, "valid_step": valid_step}, head="valid"
+                    {**valid_result, "valid_step": valid_step, "valid_time": valid_end_time - valid_start_time}, head="valid"
                 )
 
                 if update_flag:

@@ -15,75 +15,15 @@ Reference:
 
 """
 
-import wandb
 import torch
-import torch.nn.functional as F
-from torch import nn
 
 from recbole.model.sequential_recommender.duorec import DuoRec
 
 
 class BiCL4Rec(DuoRec):
-    r"""
-    TODO
-    """
 
     def __init__(self, config, dataset):
         super(BiCL4Rec, self).__init__(config, dataset)
-        self.cl_loss_debiased_type = config['cl_loss_debiased_type']
-        self.perturbation = config['perturbation']
-        self.noise_eps = config['noise_eps']
-
-    def info_nce(self, z_i, z_j, target=None):
-        """
-        We do not sample negative examples explicitly.
-        Instead, given a positive pair, similar to (Chen et al., 2017), we treat the other 2(N − 1) augmented examples within a minibatch as negative examples.
-        """
-        cur_batch_size = z_i.size(0)
-        N = 2 * cur_batch_size
-        if cur_batch_size != self.batch_size:
-            mask = self.mask_correlated_samples(cur_batch_size)
-        else:
-            mask = self.default_mask
-        z = torch.cat((z_i, z_j), dim=0)  # [2B H]
-    
-        if self.similarity_type == 'cos':
-            sim = self.sim(z.unsqueeze(1), z.unsqueeze(0), dim=2) / self.tau
-        elif self.similarity_type == 'dot':
-            sim = self.sim(z, z.T) / self.tau
-
-        sim_i_j = torch.diag(sim, cur_batch_size)
-        sim_j_i = torch.diag(sim, -cur_batch_size)
-
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)  # [2B, 1]
-        if target != None:
-            same_c_mask = target.repeat(cur_batch_size, 1) == target.reshape(-1, 1)
-            same_c_mask = same_c_mask.repeat(2, 2)
-            sim[same_c_mask] = -1.e8
-            # normalize negative scores (according to real num of negative)
-            # in other words, each positive sample would be paired with the same quantity of negative scores. => p/(p+2(B-1)*mean(ns)))
-            if self.cl_loss_debiased_type == 'norm':
-                negative_samples_weight = torch.log(1. - torch.mean(same_c_mask[mask].reshape(N, -1).float(), dim=1))
-                negative_samples_weight = negative_samples_weight.reshape(-1, 1)
-                sim = sim - negative_samples_weight
-
-        negative_samples = sim[mask].reshape(N, -1)  # [2B, 2(B-1)]
-
-        logits = torch.cat((positive_samples, negative_samples), dim=1)  # [2B, 2B-1]
-        # the first column stores positive pair scores
-        labels = torch.zeros(N, dtype=torch.long, device=z_i.device)
-        if self.cl_loss_type == 'dcl': # decoupled contrastive learning
-            loss = self.calculate_decoupled_cl_loss(logits, labels)
-        else: # original infonce
-            loss = self.cl_loss_fct(logits, labels)
-        return loss
-    
-    def perturb(self, emb):
-        noise = torch.rand(emb.shape, device=emb.device)
-        noise = F.normalize(noise) * self.noise_eps
-        # emb = emb + torch.mul(torch.sign(emb), noise)
-        emb = emb + noise
-        return emb
 
     def calculate_loss(self, interaction):
         item_seq = interaction[self.ITEM_SEQ]
@@ -109,58 +49,35 @@ class BiCL4Rec(DuoRec):
             drop_aug_seq_output = self.forward(item_seq, item_seq_len)
 
         if self.cl_type in ['fs', 'rs+fs', 'fs_drop_x']:
-            aug_item_seq, aug_item_seq_len = interaction['aug'], interaction['aug_len']
-            fs_aug_seq_output = self.forward(aug_item_seq, aug_item_seq_len)
+            fs_aug_seq_output = self.forward(interaction['aug'],
+                                             interaction['aug_len'])
         
         if self.cl_type in ['rs', 'rs+fs']:
-            aug_item_seq_rev, aug_item_seq_len_rev = interaction['aug_rev'], interaction['aug_len_rev']
-            rs_aug_seq_output = self.forward(aug_item_seq_rev, aug_item_seq_len_rev)
-
-        # perturbation
-        if self.perturbation:
-            if self.cl_type in ['fs_drop_x']:
-                drop_aug_seq_output = self.perturb(drop_aug_seq_output)
-                
-            if self.cl_type in ['fs', 'rs+fs', 'fs_drop_x']:
-                fs_aug_seq_output = self.perturb(fs_aug_seq_output)
-
-            if self.cl_type in ['rs', 'rs+fs']:
-                rs_aug_seq_output = self.perturb(rs_aug_seq_output)
-            
-            if not self.cl_type:
-                seq_output1 = self.perturb(seq_output)
-                seq_output2 = self.perturb(seq_output)
-            else:
-                seq_output = self.perturb(seq_output)
+            rs_aug_seq_output = self.forward(interaction['aug_rev'],
+                                             interaction['aug_len_rev'])
 
         cl_losses = []
-        if self.cl_loss_debiased_type in ['mean', 'norm']:
-            target = pos_items
-        else:  # mean 
-            target = None
-
         # duorec = forward supervised (fs) aug x encode original seq again
-        if self.cl_type in ['fs_drop_x']: 
-            cl_loss = self.info_nce(fs_aug_seq_output, drop_aug_seq_output, target) 
+        if self.cl_type in ['fs_drop_x']:
+            cl_loss = self.info_nce(fs_aug_seq_output,
+                                    drop_aug_seq_output,
+                                    pos_items)
             cl_losses.append(cl_loss)
 
         # reverse supervised (rs) aug x original seq
         if self.cl_type in ['rs', 'rs+fs']:
-            cl_loss = self.info_nce(rs_aug_seq_output, seq_output, target)
+            cl_loss = self.info_nce(rs_aug_seq_output,
+                                    seq_output,
+                                    pos_items)
             cl_losses.append(cl_loss)
 
         # forward supervised (fs) aug x original seq
         if self.cl_type in ['fs', 'rs+fs']:
-            cl_loss = self.info_nce(fs_aug_seq_output, seq_output, target)
-            cl_losses.append(cl_loss)
-        
-        if not self.cl_type:
-            if self.perturbation:
-                cl_loss = self.info_nce(seq_output1, seq_output2, target)
-            else:
-                cl_loss = self.info_nce(seq_output, seq_output, target)
+            cl_loss = self.info_nce(fs_aug_seq_output,
+                                    seq_output,
+                                    pos_items)
             cl_losses.append(cl_loss)
 
-        cl_losses = [loss * self.cl_lambda / len(cl_losses) for loss in cl_losses]
-
-        return tuple(losses + cl_losses) 
+        cl_lambda = self.cl_lambda / len(cl_losses)
+        cl_losses = [loss * cl_lambda for loss in cl_losses]
+        return tuple(losses + cl_losses)

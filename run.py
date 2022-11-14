@@ -29,8 +29,6 @@ def run_recbole(model=None, dataset=None, config_file_list=None, config_dict=Non
     # logger initialization
     init_logger(config)
     logger = getLogger()
-    # wandb initialization
-    # init_wandb(config['wandb_project'], config['wandb_entity'], config)
 
     logger.info(config)
 

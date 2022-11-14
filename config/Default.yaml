@@ -1,10 +1,7 @@
-# Wandb Settings
-wandb_entity: raywu
-wandb_project: recbole
-
 # Environment Settings
 seed: 1234
 show_progress: False
+log_wandb: True
 
 # Data settings
 load_col:
@@ -14,6 +11,7 @@ item_inter_num_interval: '[5,inf)'
 
 # Training Settings
 epochs: 9999
+eval_step: 30
 
 # Evaluation Settings
 eval_args:
@@ -21,7 +19,7 @@ eval_args:
   split: 
     RS: [7, 1, 2]
   mode: full
-metrics: [Recall, Precision, NDCG, MAP]
-topk: [1, 5, 10, 20, 100]
-valid_metric: Recall@20
+metrics: [Hit, Precision, NDCG, MAP]
+topk: [1, 5, 10, 20, 50]
+valid_metric: Hit@20
 eval_batch_size: 2048

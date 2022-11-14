@@ -10,7 +10,7 @@ tau: 1
 cl_loss_type: infonce  # ['dcl', 'infonce']
 cl_loss_debiased_type: null  # ['mean', 'norm']
 cl_lambda: 0.1
-cl_type: rs_su  # [rs, su, rs_su_x, all]
+cl_type: rs  # [rs, su, rs_su_x, all]
 perturbation: True
 noise_eps: 0.1 # only work if perturbation == True
 

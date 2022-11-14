@@ -1,5 +1,4 @@
-# Environment Settings
-gpu_id: 0
+wandb_project: bicl4rec
 
 # Model Settings
 n_layers: 2
@@ -15,26 +14,16 @@ loss_type: CE  # ['CE', 'BPR']
 
 similarity_type: dot  # ['dot', 'cos']
 tau: 1
-cl_loss_type: infonce  # ['dcl', 'infonce']
-cl_loss_debiased_type: null  # ['mean', 'norm']
 cl_lambda: 0.1
-perturbation: null
-noise_eps: 0. # only work if perturbation == True
 cl_type: rs+fs
 # rs = reverse supervised aug x original seq
 # fs = forward supervised aug x original seq
 # rs+fs
 # fs_drop_x = duorec = forward supervised aug x encode original seq again
-# rs+fs_drop_x
-
-# rs_fs_x = reverse supervised aug x forward supervised aug
-
 
 # Data settings
 MAX_ITEM_LIST_LENGTH: 10
-drop_inter_ratio: 0.
-drop_user_ratio: 0.
 
 # Training Settings
 train_batch_size: 512
-neg_sampling: null
+train_neg_sample_args: null

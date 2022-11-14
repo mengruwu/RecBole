@@ -1837,8 +1837,8 @@ class Dataset(torch.utils.data.Dataset):
                 f"The splitting_method [{split_mode}] has not been implemented."
             )
 
-        datasets[0].drop_inter(drop_ratio=drop_inter_ratio)
-        datasets[0].drop_user(drop_ratio=drop_user_ratio)
+        datasets[0].drop_inter(drop_ratio=drop_inter_ratio or 0.)
+        datasets[0].drop_user(drop_ratio=drop_user_ratio or 0.)
             
         return datasets
 

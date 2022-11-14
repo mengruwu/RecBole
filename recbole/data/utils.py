@@ -275,29 +275,29 @@ def _get_CL_dataloader(config, phase):
     Returns:
         type: The dataloader class that meets the requirements in :attr:`config` and :attr:`phase`.
     """
-    if phase == 'train':
-        if config['model'] == 'CL4Rec':
+    if phase == "train":
+        if config["model"] == "CL4Rec":
             return CL4RecTrainDataLoader
-        elif config['model'] == 'CoSeRec':
+        elif config["model"] == "CoSeRec":
             return CoSeRecTrainDataLoader
-        elif config['model'] == 'DuoRec':
+        elif config["model"] == "DuoRec":
             return DuoRecTrainDataLoader
-        elif config['model'] == 'MyRec3':
+        elif config["model"] == "MyRec3":
             return MyRec3TrainDataLoader
-        elif config['model'] == 'MyRec5':
+        elif config["model"] == "MyRec5":
             return DuoRecTrainDataLoader
-        elif config['model'] == 'MyRec8':
+        elif config["model"] == "MyRec8":
             return MyRec8TrainDataLoader
-        elif config['model'] in ['MyRec4', 'MyRec6', 'MyRec7', 'BiSASRec']:
+        elif config["model"] in ["MyRec4", "MyRec6", "MyRec7", "BiSASRec"]:
             return MyRec4TrainDataLoader
-        elif 'BiCL4' in config['model']:
+        elif "BiCL4" in config["model"]:
             return BiCL4RecTrainDataLoader
         return CLTrainDataLoader
     else:
-        eval_strategy = config['eval_neg_sample_args']['strategy']
-        if eval_strategy in {'none', 'by'}:
+        eval_strategy = config["eval_args"]["mode"]
+        if eval_strategy in {"none", "by"}:
             return NegSampleEvalDataLoader
-        elif eval_strategy == 'full':
+        elif eval_strategy == "full":
             return FullSortEvalDataLoader
 
 def _get_AE_dataloader(config, phase):

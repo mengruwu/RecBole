@@ -204,12 +204,6 @@ def init_seed(seed, reproducibility):
         torch.backends.cudnn.deterministic = False
 
 
-def init_wandb(project, entity, config):
-    wandb.init(project=project,
-               entity=entity,
-               config=config)
-
-
 def get_tensorboard(logger):
     r"""Creates a SummaryWriter of Tensorboard that can log PyTorch models and metrics into a directory for
     visualization within the TensorBoard UI.
