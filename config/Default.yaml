@@ -11,7 +11,6 @@ item_inter_num_interval: '[5,inf)'
 
 # Training Settings
 epochs: 9999
-eval_step: 30
 
 # Evaluation Settings
 eval_args:
