@@ -280,7 +280,7 @@ class Trainer(AbstractTrainer):
             dict: valid result
         """
         valid_result = self.evaluate(
-            valid_data, load_best_model=False, show_progress=show_progress
+            valid_data, load_best_model=False, show_progress=show_progress, head="valid"
         )
         valid_score = calculate_valid_score(valid_result, self.valid_metric)
         return valid_score, valid_result
@@ -564,7 +564,7 @@ class Trainer(AbstractTrainer):
 
     @torch.no_grad()
     def evaluate(
-        self, eval_data, load_best_model=True, model_file=None, show_progress=False
+        self, eval_data, load_best_model=True, model_file=None, show_progress=False, head="eval"
     ):
         r"""Evaluate the model based on the eval data.
 
@@ -630,7 +630,7 @@ class Trainer(AbstractTrainer):
         result = self.evaluator.evaluate(struct)
         if not self.config["single_spec"]:
             result = self._map_reduce(result, num_sample)
-        self.wandblogger.log_eval_metrics(result, head="eval")
+        self.wandblogger.log_eval_metrics(result, head=head)
         return result
 
     def _map_reduce(self, result, num_sample):

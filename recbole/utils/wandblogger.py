@@ -34,9 +34,11 @@ class WandbLogger(object):
                 )
 
             # Initialize a W&B run
+            if self._wandb.run:
+                self._wandb.finish()
+
             self._wandb.init(project=self.config.wandb_project,
-                             config=self.config,
-                             reinit=self._wandb.run is not None)
+                             config=self.config)
 
             self._set_steps()
 
